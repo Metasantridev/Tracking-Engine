@@ -953,15 +953,219 @@ class PortalProcessor:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# INTRO SCREEN — input nama + animasi typewriter
+# ══════════════════════════════════════════════════════════════════════════════
+
+class IntroScreen:
+    """
+    Fase 1 : Form input nama (keyboard + tombol OK di layar)
+    Fase 2 : Animasi typewriter baris per baris, lalu launch app
+    """
+
+    LINES_TEMPLATE = [
+        "Halo, {name}.",
+        "Selamat datang di RetroLens.",
+        "Sistem siap digunakan.",
+        "",
+        "In engineer we trust.",
+        "— Faisaldev",
+    ]
+
+    CHAR_DELAY   = 0.045   # detik per karakter
+    LINE_PAUSE   = 0.35    # jeda antar baris
+    HOLD_AFTER   = 1.6     # tahan di akhir sebelum masuk app
+
+    def __init__(self, fw: int, fh: int):
+        self.fw = fw
+        self.fh = fh
+        self.name       = ""          # input user
+        self.phase      = "input"     # "input" | "typing" | "done"
+        self.cursor_vis = True
+        self._cursor_t  = time.time()
+
+        # State typewriter
+        self._lines: list  = []
+        self._line_idx     = 0
+        self._char_idx     = 0
+        self._next_char_t  = 0.0
+        self._done_t       = 0.0
+
+        # Tombol OK
+        bw, bh = 100, 36
+        self._ok_rect = (fw//2 - bw//2, fh//2 + 60, fw//2 + bw//2, fh//2 + 60 + bh)
+
+    # ── public ────────────────────────────────────────────────────────────────
+
+    def handle_key(self, key: int) -> None:
+        if self.phase != "input":
+            return
+        if key == 13 or key == 10:          # Enter → submit
+            self._submit()
+        elif key == 8 or key == 127:        # Backspace
+            self.name = self.name[:-1]
+        elif 32 <= key <= 126:              # Printable ASCII
+            if len(self.name) < 24:
+                self.name += chr(key)
+
+    def handle_click(self, mx: int, my: int) -> None:
+        if self.phase != "input":
+            return
+        x1, y1, x2, y2 = self._ok_rect
+        if x1 <= mx <= x2 and y1 <= my <= y2:
+            self._submit()
+
+    def is_finished(self) -> bool:
+        return self.phase == "done" and time.time() >= self._done_t
+
+    def draw(self, canvas: np.ndarray) -> np.ndarray:
+        if self.phase == "input":
+            self._draw_input(canvas)
+        else:
+            self._draw_typing(canvas)
+        return canvas
+
+    # ── private ───────────────────────────────────────────────────────────────
+
+    def _submit(self):
+        name = self.name.strip() or "Anonim"
+        self._lines = [l.format(name=name) for l in self.LINES_TEMPLATE]
+        self._line_idx    = 0
+        self._char_idx    = 0
+        self._next_char_t = time.time() + 0.3
+        self.phase        = "typing"
+
+    def _draw_input(self, frame: np.ndarray) -> None:
+        fw, fh = self.fw, self.fh
+        # Background gelap solid
+        frame[:] = (12, 12, 18)
+
+        font  = cv2.FONT_HERSHEY_SIMPLEX
+        now   = time.time()
+
+        # Judul
+        title = "RETROLENS ENGINE"
+        (tw, _), _ = cv2.getTextSize(title, font, 0.9, 2)
+        cv2.putText(frame, title, ((fw-tw)//2, fh//2 - 100),
+                    font, 0.9, (0, 220, 255), 2, cv2.LINE_AA)
+
+        # Sub
+        sub = "Siapa nama Anda?"
+        (sw, _), _ = cv2.getTextSize(sub, font, 0.55, 1)
+        cv2.putText(frame, sub, ((fw-sw)//2, fh//2 - 55),
+                    font, 0.55, (160, 160, 160), 1, cv2.LINE_AA)
+
+        # Input box
+        bx1, bx2 = fw//2 - 180, fw//2 + 180
+        by1, by2 = fh//2 - 30,  fh//2 + 10
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (30, 30, 40), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 180, 255), 1)
+
+        # Cursor blink
+        if now - self._cursor_t > 0.5:
+            self.cursor_vis = not self.cursor_vis
+            self._cursor_t  = now
+        display = self.name + ("|" if self.cursor_vis else " ")
+        cv2.putText(frame, display, (bx1 + 10, by2 - 8),
+                    font, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Tombol OK
+        ox1, oy1, ox2, oy2 = self._ok_rect
+        cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 140, 60), -1)
+        cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 220, 100), 1)
+        (ltw, _), _ = cv2.getTextSize("OK  /  Enter", font, 0.45, 1)
+        cv2.putText(frame, "OK  /  Enter", ((fw - ltw)//2, oy2 - 10),
+                    font, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Footer
+        cv2.putText(frame, "Powered by Faisaldev", (10, fh - 12),
+                    font, 0.38, (50, 50, 60), 1, cv2.LINE_AA)
+
+    def _draw_typing(self, frame: np.ndarray) -> None:
+        fw, fh = self.fw, self.fh
+        frame[:] = (12, 12, 18)
+
+        font   = cv2.FONT_HERSHEY_SIMPLEX
+        now    = time.time()
+        line_h = 42
+
+        # Advance typewriter
+        if self._line_idx < len(self._lines):
+            cur_line = self._lines[self._line_idx]
+            if now >= self._next_char_t:
+                if self._char_idx < len(cur_line):
+                    self._char_idx    += 1
+                    self._next_char_t  = now + self.CHAR_DELAY
+                else:
+                    # Baris selesai → lanjut baris berikut
+                    self._line_idx   += 1
+                    self._char_idx    = 0
+                    self._next_char_t = now + self.LINE_PAUSE
+        else:
+            # Semua baris selesai
+            if self._done_t == 0.0:
+                self._done_t = now + self.HOLD_AFTER
+            self.phase = "done"
+
+        # Hitung posisi mulai agar vertikal center
+        total_h = len(self._lines) * line_h
+        start_y = (fh - total_h) // 2 + line_h
+
+        for i, line in enumerate(self._lines):
+            if i < self._line_idx:
+                rendered = line              # baris sudah selesai
+            elif i == self._line_idx:
+                rendered = line[:self._char_idx]   # baris sedang diketik
+            else:
+                break                        # baris belum sampai
+
+            # Pilih warna per baris
+            if i == 0:
+                color = (0, 220, 255)        # cyan — "Halo, nama"
+                scale = 0.75; thick = 2
+            elif i == len(self._lines) - 1:
+                color = (180, 180, 180)      # abu — "— Faisaldev"
+                scale = 0.45; thick = 1
+            elif "In engineer" in line:
+                color = (0, 215, 255)        # kuning
+                scale = 0.58; thick = 1
+            else:
+                color = (200, 200, 200)
+                scale = 0.55; thick = 1
+
+            (tw, _), _ = cv2.getTextSize(rendered, font, scale, thick)
+            tx = (fw - tw) // 2
+            ty = start_y + i * line_h
+
+            # Kursor blink di baris aktif
+            disp = rendered
+            if i == self._line_idx and self.phase == "typing":
+                now2 = time.time()
+                if now2 - self._cursor_t > 0.4:
+                    self.cursor_vis = not self.cursor_vis
+                    self._cursor_t  = now2
+                disp += "|" if self.cursor_vis else " "
+
+            cv2.putText(frame, disp, (tx, ty), font, scale, color, thick, cv2.LINE_AA)
+
+        # Footer
+        cv2.putText(frame, "Powered by Faisaldev", (10, fh - 12),
+                    font, 0.38, (50, 50, 60), 1, cv2.LINE_AA)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MOUSE CALLBACK
 # ══════════════════════════════════════════════════════════════════════════════
 
 _processor_ref: Optional[PortalProcessor] = None
+_intro_ref: Optional[object] = None
 _pending_capture = False
 
 def _on_mouse(event, x, y, flags, param):
     global _pending_capture
     if event == cv2.EVENT_LBUTTONDOWN:
+        if _intro_ref and not _intro_ref.is_finished():
+            _intro_ref.handle_click(x, y)
+            return
         if _processor_ref:
             # Cek tombol EXIT
             ex1, ey1, ex2, ey2 = _processor_ref._exit_btn_rect
@@ -980,7 +1184,7 @@ def _on_mouse(event, x, y, flags, param):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global _processor_ref, _pending_capture
+    global _processor_ref, _intro_ref, _pending_capture
 
     cfg       = PipelineConfig()
     processor = PortalProcessor(cfg)
@@ -995,11 +1199,26 @@ def main():
     cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(win, _on_mouse)
 
+    # ── INTRO SCREEN ──────────────────────────────────────────────────────────
+    intro = IntroScreen(cfg.frame_width, cfg.frame_height)
+    _intro_ref = intro
+    canvas = np.zeros((cfg.frame_height, cfg.frame_width, 3), dtype=np.uint8)
+
+    while not intro.is_finished():
+        canvas[:] = 0
+        intro.draw(canvas)
+        cv2.imshow(win, canvas)
+        key = cv2.waitKey(16) & 0xFF
+        if key == 27 or key == ord("q"):   # ESC/Q skip intro
+            break
+        if intro.phase == "input":
+            intro.handle_key(key)
+
+    _intro_ref = None
+    # ── END INTRO ─────────────────────────────────────────────────────────────
+
     print("=== RetroLens Engine — Powered by Faisaldev ===")
-    print("Q        : Quit | C : Toggle mode | N/P : Filter")
-    print("F        : Toggle face filter")
-    print("[Klik ikon kamera] : Ambil foto")
-    print("[Acungkan jempol]  : Blur + nama + close")
+    print("Q / EXIT btn : Keluar")
 
     while True:
         ret, frame = cap.read()
