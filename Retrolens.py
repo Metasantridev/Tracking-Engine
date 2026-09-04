@@ -847,7 +847,10 @@ class PortalProcessor:
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
         """Return processed_frame."""
         frame   = cv2.flip(frame, 1)
-        frame   = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height))
+        h_cam, w_cam = frame.shape[:2]
+        if w_cam != self.cfg.frame_width or h_cam != self.cfg.frame_height:
+            frame = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height),
+                               interpolation=cv2.INTER_LINEAR)
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.detector.process(rgb)
         now     = time.time()
@@ -1193,6 +1196,13 @@ def main():
     cap = cv2.VideoCapture(cfg.cam_index)
     if not cap.isOpened():
         print("[ERROR] Kamera tidak terdeteksi!"); return
+
+    # Set resolusi kamera ke HD secara hardware
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
 
     win = "Tracking Engine"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
