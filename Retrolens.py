@@ -664,13 +664,6 @@ class FaceFilterProcessor:
             frame[y:y+bh, x:x+bw] = (filtered*m + roi*(1-m)).astype(np.uint8)
             cv2.polylines(frame, [oval_pts], True, (0,220,255), 1)
 
-            # Emoji di atas kepala
-            head_x = int(face_lm.landmark[10].x * w)
-            head_y = int(face_lm.landmark[10].y * h)
-            emoji  = FACE_EMOJIS[_active_emoji_idx % len(FACE_EMOJIS)]
-            emoji_size = max(32, bw // 2)
-            _draw_emoji_on_frame(frame, head_x, head_y, emoji_size, emoji)
-
         return frame, face_count
 
     def close(self): self.detector.close()
@@ -971,27 +964,23 @@ class PortalProcessor:
             cv2.putText(frame, "V BLUR MODE", (15, 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 180), 2, cv2.LINE_AA)
 
-        # ── 👍 Thumbs Up → popup toast "Mas Faisal Ganteng" ──────────────────
+        # ── 👍 Thumbs Up → blur background + teks "Mas Faisal Ganteng" ───────
         if thumbsup:
             if not self._thumbsup_triggered:
                 self._thumbsup_triggered   = True
                 self._thumbsup_frame_start = now
-                # Tampilkan toast via photo_cap (pakai sistem prank-nya)
-                self.photo_cap.prank_msg   = "Mas Faisal Ganteng  😎👍"
-                self.photo_cap.prank_until = now + 3.0
-            # Nama besar di tengah selama gesture aktif
-            name_text = "Mas Faisal Ganteng :D"
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 1.4; thick = 3
+            # Blur seluruh background
+            frame[:] = cv2.GaussianBlur(frame, (45, 45), 0)
+            # Teks di tengah
+            name_text = "Mas Faisal Ganteng"
+            font  = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 1.6; thick = 3
             fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
-            elapsed = now - self._thumbsup_frame_start
             (tw, th), _ = cv2.getTextSize(name_text, font, scale, thick)
             tx = (fw_f - tw) // 2
             ty = fh_f // 2 + th // 2
-            cv2.putText(frame, name_text, (tx+3, ty+3), font, scale, (0,0,0), thick+2, cv2.LINE_AA)
-            r = int(abs(np.sin(elapsed * 3)) * 255)
-            g = int(abs(np.cos(elapsed * 2)) * 200)
-            cv2.putText(frame, name_text, (tx, ty), font, scale, (r, g, 255), thick, cv2.LINE_AA)
+            cv2.putText(frame, name_text, (tx+3, ty+3), font, scale, (0, 0, 0), thick+3, cv2.LINE_AA)
+            cv2.putText(frame, name_text, (tx, ty), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
         else:
             self._thumbsup_triggered = False
 
