@@ -417,6 +417,58 @@ class ThumbsUpChecker:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SARANGEO (ILY 🤟) GESTURE DETECTOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+SARANGEO_QUOTES = [
+    "Saranghae~ 💕",
+    "I love you to the moon and back 🌙",
+    "Cinta itu buta, tapi hati yang melihat ❤️",
+    "Kamu bintang di langit malamku ✨",
+    "Stay in love, stay alive 💖",
+    "Love is the answer 🌸",
+    "Hatiku milikmu selamanya 💗",
+    "사랑해요~ (Saranghaeyo) 🥰",
+    "You make my heart go boom 💓",
+    "Dimana kamu, di situ hatiku 🫀",
+    "Love without limits 💝",
+    "Kamu adalah alasan senyumku 😊",
+    "세상에서 제일 사랑해 (Cinta terbesar di dunia) ❤️",
+    "My heart beats only for you 💞",
+    "Jangan pergi, aku butuh kamu 🥺",
+]
+
+
+class SarangeoChecker:
+    """
+    Deteksi gesture 🤟 ILY / Sarangeo:
+    - Ibu jari (4) naik
+    - Telunjuk (8) naik
+    - Kelingking (20) naik
+    - Jari tengah (12) & manis (16) menekuk
+    """
+
+    @staticmethod
+    def is_sarangeo(landmarks) -> bool:
+        lm = landmarks
+
+        # Ibu jari tegak
+        thumb_up = lm[4].y < lm[3].y - 0.03
+
+        # Telunjuk tegak
+        index_up = lm[8].y < lm[6].y - 0.03
+
+        # Kelingking tegak
+        pinky_up = lm[20].y < lm[18].y - 0.03
+
+        # Jari tengah & manis menekuk
+        middle_curled = lm[12].y > lm[10].y + 0.02
+        ring_curled   = lm[16].y > lm[14].y + 0.02
+
+        return thumb_up and index_up and pinky_up and middle_curled and ring_curled
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # FILTER BANK
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -816,6 +868,11 @@ class PortalProcessor:
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
 
+        # Flag sarangeo 🤟
+        self._sarangeo_triggered  = False
+        self._sarangeo_quote      = ""
+        self._sarangeo_quote_until = 0.0
+
         # Tombol EXIT
         self._exit_requested = False
         self._exit_btn_rect  = (cfg.frame_width - 70, 4, cfg.frame_width - 4, 30)
@@ -881,6 +938,14 @@ class PortalProcessor:
                 if ThumbsUpChecker.is_thumbs_up(lm):
                     thumbsup = True
 
+                if SarangeoChecker.is_sarangeo(lm):
+                    if not self._sarangeo_triggered:
+                        self._sarangeo_triggered   = True
+                        self._sarangeo_quote       = random.choice(SARANGEO_QUOTES)
+                        self._sarangeo_quote_until = now + 3.0
+                else:
+                    self._sarangeo_triggered = False
+
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
 
@@ -927,6 +992,35 @@ class PortalProcessor:
             cv2.putText(frame, name_text, (tx, ty), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
         else:
             self._thumbsup_triggered = False
+
+        # ── 🤟 Sarangeo → tampilkan kata-kata random di tengah layar ──────────
+        if now < self._sarangeo_quote_until and self._sarangeo_quote:
+            quote = self._sarangeo_quote
+            font  = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 1.2; thick = 2
+            fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
+            (tw, th), _ = cv2.getTextSize(quote, font, scale, thick)
+            tx = (fw_f - tw) // 2
+            ty = fh_f // 2
+
+            # Background semi-transparan
+            pad = 20
+            ovl = frame.copy()
+            cv2.rectangle(ovl,
+                          (tx - pad, ty - th - pad),
+                          (tx + tw + pad, ty + pad),
+                          (20, 10, 40), -1)
+            cv2.addWeighted(ovl, 0.65, frame, 0.35, 0, frame)
+
+            # Border pink
+            cv2.rectangle(frame,
+                          (tx - pad, ty - th - pad),
+                          (tx + tw + pad, ty + pad),
+                          (180, 80, 220), 2)
+
+            # Shadow + teks
+            cv2.putText(frame, quote, (tx+2, ty+2), font, scale, (0, 0, 0), thick+2, cv2.LINE_AA)
+            cv2.putText(frame, quote, (tx, ty), font, scale, (255, 180, 255), thick, cv2.LINE_AA)
 
         face_count = 0
         if self.face_mode:
