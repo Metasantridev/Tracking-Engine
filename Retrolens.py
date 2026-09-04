@@ -879,6 +879,10 @@ class PortalProcessor:
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
 
+        # Tombol EXIT
+        self._exit_requested = False
+        self._exit_btn_rect  = (cfg.frame_width - 70, 4, cfg.frame_width - 4, 30)
+
     @property
     def current_filter(self): return self.filter_keys[self.active_filter_idx]
     @property
@@ -997,6 +1001,14 @@ class PortalProcessor:
     def _draw_hud(self, frame, is_bowtie, face_count, all_tips=None, peace_active=False, fist_count=0):
         FPVHud.draw(frame, self, is_bowtie, face_count,
                     all_tips or [], peace_active, fist_count)
+        # Tombol EXIT — pojok kanan atas
+        ex1, ey1, ex2, ey2 = self._exit_btn_rect
+        ovl = frame.copy()
+        cv2.rectangle(ovl, (ex1, ey1), (ex2, ey2), (30, 20, 20), -1)
+        cv2.addWeighted(ovl, 0.8, frame, 0.2, 0, frame)
+        cv2.rectangle(frame, (ex1, ey1), (ex2, ey2), (60, 60, 200), 1)
+        cv2.putText(frame, "EXIT", (ex1 + 8, ey2 - 7),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 255), 1, cv2.LINE_AA)
 
     def close(self):
         self.face_proc.close()
@@ -1014,6 +1026,11 @@ def _on_mouse(event, x, y, flags, param):
     global _pending_capture
     if event == cv2.EVENT_LBUTTONDOWN:
         if _processor_ref:
+            # Cek tombol EXIT
+            ex1, ey1, ex2, ey2 = _processor_ref._exit_btn_rect
+            if ex1 <= x <= ex2 and ey1 <= y <= ey2:
+                _processor_ref._exit_requested = True
+                return
             # Cek watermark dulu
             _processor_ref.watermark_ui.handle_click(x, y)
             # Cek photo capture
@@ -1062,7 +1079,7 @@ def main():
         cv2.imshow(win, out)
 
         key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
+        if key == ord("q") or processor._exit_requested:
             break
         elif key == ord("c"):
             processor.is_3d_mode = not processor.is_3d_mode
