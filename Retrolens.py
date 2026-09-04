@@ -469,58 +469,6 @@ class SarangeoChecker:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CROSSED FINGERS 🤞 GESTURE DETECTOR
-# ══════════════════════════════════════════════════════════════════════════════
-
-CROSSED_QUOTES = [
-    "Semoga berhasil! 🤞",
-    "Good luck, you got this! 🍀",
-    "Bismillah, pasti bisa! 💪",
-    "Fingers crossed for you~ 🤞",
-    "Doa terbaik selalu menyertaimu ✨",
-    "Yakin bisa, jangan menyerah! 🔥",
-    "The universe is on your side 🌌",
-    "Semesta mendukungmu hari ini 🌟",
-    "Harapan itu nyata, terus percaya! 💫",
-    "Lucky vibes loading... 99% ✅",
-    "Keep going, rezekimu sudah ditentukan 🙏",
-    "Manifest it and it will come 🌈",
-    "Sukses itu dekat, jangan berhenti! 🏁",
-    "Allah selalu bersama orang yang sabar 🤲",
-    "Insha Allah, semua akan indah pada waktunya 🌸",
-]
-
-
-class CrossedFingersChecker:
-    """
-    Deteksi gesture 🤞 crossed fingers:
-    - Telunjuk (8) dan jari tengah (12) keduanya naik
-    - Tip telunjuk dan tengah saling dekat (bersilang)
-    - Jari manis (16) dan kelingking (20) menekuk
-    - Ibu jari boleh bebas
-    """
-
-    @staticmethod
-    def is_crossed(landmarks, frame_w: int, frame_h: int) -> bool:
-        lm = landmarks
-
-        # Telunjuk & tengah tegak
-        index_up  = lm[8].y  < lm[6].y  - 0.02
-        middle_up = lm[12].y < lm[10].y - 0.02
-
-        # Jari manis & kelingking menekuk
-        ring_curled  = lm[16].y > lm[14].y + 0.02
-        pinky_curled = lm[20].y > lm[18].y + 0.02
-
-        # Tip telunjuk dan tengah harus dekat secara x (silang)
-        ix = lm[8].x * frame_w
-        mx = lm[12].x * frame_w
-        close_x = abs(ix - mx) < 30   # dalam 30px
-
-        return index_up and middle_up and ring_curled and pinky_curled and close_x
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # FILTER BANK
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -870,8 +818,8 @@ class FPVHud:
 @dataclass
 class PipelineConfig:
     cam_index: int = 0
-    frame_width: int = 1280
-    frame_height: int = 720
+    frame_width: int = 1920
+    frame_height: int = 1080
     pinch_threshold_px: float = 45.0
     filter_cooldown_sec: float = 0.15
     mode_cooldown_sec: float = 1.2
@@ -909,8 +857,8 @@ class PortalProcessor:
         self.mp_hands  = mp.solutions.hands
         self.mp_draw   = mp.solutions.drawing_utils
         self.detector  = self.mp_hands.Hands(
-            static_image_mode=False, max_num_hands=2, model_complexity=0,
-            min_detection_confidence=0.6, min_tracking_confidence=0.5)
+            static_image_mode=False, max_num_hands=2, model_complexity=1,
+            min_detection_confidence=0.8, min_tracking_confidence=0.8)
 
         self.face_proc    = FaceFilterProcessor(cfg)
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
@@ -924,11 +872,6 @@ class PortalProcessor:
         self._sarangeo_triggered  = False
         self._sarangeo_quote      = ""
         self._sarangeo_quote_until = 0.0
-
-        # Flag crossed fingers 🤞
-        self._crossed_triggered   = False
-        self._crossed_quote       = ""
-        self._crossed_quote_until = 0.0
 
         # Tombol EXIT
         self._exit_requested = False
@@ -972,10 +915,8 @@ class PortalProcessor:
         all_tips    = []
         fist_count  = 0
         is_bowtie   = False
-        peace_count      = 0
-        thumbsup         = False
-        sarangeo_any     = False
-        crossed_any      = False
+        peace_count = 0
+        thumbsup    = False
 
         if results.multi_hand_landmarks:
             for hand_lm in results.multi_hand_landmarks:
@@ -998,30 +939,13 @@ class PortalProcessor:
                     thumbsup = True
 
                 if SarangeoChecker.is_sarangeo(lm):
-                    sarangeo_any = True
+                    if not self._sarangeo_triggered:
+                        self._sarangeo_triggered   = True
+                        self._sarangeo_quote       = random.choice(SARANGEO_QUOTES)
+                        self._sarangeo_quote_until = now + 3.0
+                else:
+                    self._sarangeo_triggered = False
 
-                if CrossedFingersChecker.is_crossed(lm, self.cfg.frame_width, self.cfg.frame_height):
-                    crossed_any = True
-
-        # ── Sarangeo — trigger sekali, reset saat gesture lepas ───────────────
-        if sarangeo_any:
-            if not self._sarangeo_triggered:
-                self._sarangeo_triggered   = True
-                self._sarangeo_quote       = random.choice(CROSSED_QUOTES)
-                self._sarangeo_quote_until = now + 3.0
-        else:
-            self._sarangeo_triggered = False
-
-        # ── Crossed fingers — trigger sekali, reset saat gesture lepas ────────
-        if crossed_any:
-            if not self._crossed_triggered:
-                self._crossed_triggered   = True
-                self._crossed_quote       = random.choice(SARANGEO_QUOTES)
-                self._crossed_quote_until = now + 3.0
-        else:
-            self._crossed_triggered = False
-
-        if results.multi_hand_landmarks:
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
 
@@ -1097,32 +1021,6 @@ class PortalProcessor:
             # Shadow + teks
             cv2.putText(frame, quote, (tx+2, ty+2), font, scale, (0, 0, 0), thick+2, cv2.LINE_AA)
             cv2.putText(frame, quote, (tx, ty), font, scale, (255, 180, 255), thick, cv2.LINE_AA)
-
-        # ── 🤞 Crossed Fingers → tampilkan kata-kata harapan random ──────────
-        if now < self._crossed_quote_until and self._crossed_quote:
-            quote = self._crossed_quote
-            font  = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 1.2; thick = 2
-            fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
-            (tw, th), _ = cv2.getTextSize(quote, font, scale, thick)
-            tx = (fw_f - tw) // 2
-            ty = fh_f // 2 + 80   # sedikit di bawah sarangeo supaya tidak tumpuk
-
-            pad = 20
-            ovl = frame.copy()
-            cv2.rectangle(ovl,
-                          (tx - pad, ty - th - pad),
-                          (tx + tw + pad, ty + pad),
-                          (10, 40, 20), -1)
-            cv2.addWeighted(ovl, 0.65, frame, 0.35, 0, frame)
-
-            cv2.rectangle(frame,
-                          (tx - pad, ty - th - pad),
-                          (tx + tw + pad, ty + pad),
-                          (50, 220, 120), 2)
-
-            cv2.putText(frame, quote, (tx+2, ty+2), font, scale, (0, 0, 0), thick+2, cv2.LINE_AA)
-            cv2.putText(frame, quote, (tx, ty), font, scale, (180, 255, 200), thick, cv2.LINE_AA)
 
         face_count = 0
         if self.face_mode:
@@ -1403,8 +1301,8 @@ def main():
         print("[ERROR] Kamera tidak terdeteksi!"); return
 
     # Set resolusi kamera ke HD secara hardware
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
