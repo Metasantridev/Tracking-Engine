@@ -17,7 +17,7 @@ import numpy as np
 # WATERMARK & PRICING SYSTEM
 # ══════════════════════════════════════════════════════════════════════════════
 
-WATERMARK_TEXT   = "Powered by: Faisaldev"
+WATERMARK_TEXT   = "Powered by Faisaldev"
 PRICING_PLANS    = [
     {"label": "Pro",     "price": 74_900,       "desc": "Hilangkan watermark + semua filter"},
     {"label": "Max",     "price": 2_500_000,    "desc": "Akses seumur hidup + source code"},
@@ -766,8 +766,8 @@ class FPVHud:
 @dataclass
 class PipelineConfig:
     cam_index: int = 0
-    frame_width: int = 960
-    frame_height: int = 540
+    frame_width: int = 1280
+    frame_height: int = 720
     pinch_threshold_px: float = 45.0
     filter_cooldown_sec: float = 0.15
     mode_cooldown_sec: float = 1.2
@@ -964,7 +964,7 @@ class IntroScreen:
 
     LINES_TEMPLATE = [
         "Halo, {name}.",
-        "Selamat datang di RetroLens.",
+        "Selamat datang di Tracking Engine.",
         "Sistem siap digunakan.",
         "",
         "In engineer we trust.",
@@ -1043,7 +1043,7 @@ class IntroScreen:
         now   = time.time()
 
         # Judul
-        title = "RETROLENS ENGINE"
+        title = "TRACKING ENGINE"
         (tw, _), _ = cv2.getTextSize(title, font, 0.9, 2)
         cv2.putText(frame, title, ((fw-tw)//2, fh//2 - 100),
                     font, 0.9, (0, 220, 255), 2, cv2.LINE_AA)
@@ -1194,7 +1194,7 @@ def main():
     if not cap.isOpened():
         print("[ERROR] Kamera tidak terdeteksi!"); return
 
-    win = "RetroLens Engine"
+    win = "Tracking Engine"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(win, _on_mouse)
@@ -1204,15 +1204,34 @@ def main():
     _intro_ref = intro
     canvas = np.zeros((cfg.frame_height, cfg.frame_width, 3), dtype=np.uint8)
 
+    # Tampilkan dulu biar window dapat fokus
+    intro.draw(canvas)
+    cv2.imshow(win, canvas)
+    cv2.waitKey(1)
+
     while not intro.is_finished():
         canvas[:] = 0
         intro.draw(canvas)
         cv2.imshow(win, canvas)
-        key = cv2.waitKey(16) & 0xFF
-        if key == 27 or key == ord("q"):   # ESC/Q skip intro
+
+        raw = cv2.waitKey(16)
+        if raw == -1:
+            continue
+        key = raw & 0xFFFF          # ambil 16-bit supaya tangkap karakter non-ASCII juga
+
+        if key == 27:               # ESC — skip intro
             break
+        if key == ord("q") and intro.phase != "input":
+            break                   # Q hanya skip di fase typing, bukan saat ketik nama
+
         if intro.phase == "input":
-            intro.handle_key(key)
+            if key in (13, 10):                     # Enter
+                intro._submit()
+            elif key in (8, 127, 65288):            # Backspace (Linux/Mac/Win)
+                intro.name = intro.name[:-1]
+            elif 32 <= key <= 126:                  # Printable ASCII
+                if len(intro.name) < 24:
+                    intro.name += chr(key)
 
     _intro_ref = None
     # ── END INTRO ─────────────────────────────────────────────────────────────
