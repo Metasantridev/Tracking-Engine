@@ -25,24 +25,14 @@ PRICING_PLANS    = [
 
 
 class WatermarkUI:
-    """
-    Draws persistent watermark on every frame.
-    Clicking the [X] button → shows pricing modal.
-    Clicking a 'Beli' button → shows 'saldo kurang' toast.
-    All rendered with OpenCV — no external GUI library needed.
-    """
-
     def __init__(self, frame_w: int, frame_h: int):
         self.fw = frame_w
         self.fh = frame_h
-
-        # State
         self.show_modal   = False
         self.toast_msg    = ""
         self.toast_until  = 0.0
-        self.selected_plan: Optional[int] = None   # index into PRICING_PLANS
+        self.selected_plan: Optional[int] = None
 
-        # Watermark geometry (bottom-right)
         self.wm_font       = cv2.FONT_HERSHEY_SIMPLEX
         self.wm_scale      = 0.52
         self.wm_thick      = 1
@@ -50,45 +40,34 @@ class WatermarkUI:
         pad = 6
         self.wm_x  = frame_w - tw - 36 - pad * 2 - 4
         self.wm_y  = frame_h - 12
-        # [X] button rect
         btn_size   = 18
         self.x_rect = (
             frame_w - btn_size - 4,
             frame_h - btn_size - 4,
             frame_w - 4,
             frame_h - 4,
-        )  # x1,y1,x2,y2
+        )
 
-        # Modal geometry (centered)
         self.modal_w = 420
         self.modal_h = 260
         self.modal_x = (frame_w - self.modal_w) // 2
         self.modal_y = (frame_h - self.modal_h) // 2
-
-        # Beli button rects per plan (built in _draw_modal)
         self.beli_rects: List[Tuple[int,int,int,int]] = []
 
-    # ── public ────────────────────────────────────────────────────────────────
-
     def handle_click(self, mx: int, my: int) -> None:
-        """Call this whenever the user clicks (mx, my)."""
         if self.show_modal:
             self._handle_modal_click(mx, my)
         else:
             self._handle_watermark_click(mx, my)
 
     def draw(self, frame: np.ndarray) -> np.ndarray:
-        """Overlay watermark (and modal if active) onto frame. Mutates frame."""
         self._draw_watermark(frame)
         if self.show_modal:
             self._draw_modal(frame)
         self._draw_toast(frame)
         return frame
 
-    # ── watermark ─────────────────────────────────────────────────────────────
-
     def _draw_watermark(self, frame: np.ndarray) -> None:
-        # Semi-transparent background pill
         x1, y1, x2, y2 = self.x_rect
         overlay = frame.copy()
         cv2.rectangle(overlay,
@@ -96,14 +75,10 @@ class WatermarkUI:
                        (self.fw - 2,   self.fh - 2),
                        (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.45, frame, 0.55, 0, frame)
-
-        # Text
         cv2.putText(frame, WATERMARK_TEXT,
                     (self.wm_x, self.wm_y),
                     self.wm_font, self.wm_scale,
                     (255, 215, 0), self.wm_thick, cv2.LINE_AA)
-
-        # [X] button
         cv2.rectangle(frame, (x1, y1), (x2, y2), (60, 60, 60), -1)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (180, 180, 180), 1)
         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
@@ -116,50 +91,34 @@ class WatermarkUI:
             self.show_modal = True
             self.beli_rects = []
 
-    # ── modal ─────────────────────────────────────────────────────────────────
-
     def _draw_modal(self, frame: np.ndarray) -> None:
         mx, my = self.modal_x, self.modal_y
         mw, mh = self.modal_w, self.modal_h
         self.beli_rects = []
-
-        # Backdrop blur-ish (darkened overlay)
         overlay = frame.copy()
         cv2.rectangle(overlay, (0, 0), (self.fw, self.fh), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-
-        # Modal card
         cv2.rectangle(frame, (mx, my), (mx+mw, my+mh), (28, 28, 35), -1)
         cv2.rectangle(frame, (mx, my), (mx+mw, my+mh), (80, 80, 100), 2)
-
-        # Title
         cv2.putText(frame, "Hapus Watermark",
                     (mx+18, my+34), cv2.FONT_HERSHEY_SIMPLEX, 0.75,
                     (255, 215, 0), 2, cv2.LINE_AA)
         cv2.putText(frame, "Pilih paket untuk melanjutkan:",
                     (mx+18, my+58), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                     (180, 180, 180), 1, cv2.LINE_AA)
-
-        # Divider
         cv2.line(frame, (mx+12, my+68), (mx+mw-12, my+68), (70, 70, 90), 1)
-
-        # Plans
         for i, plan in enumerate(PRICING_PLANS):
             row_y = my + 88 + i * 72
             is_sel = (self.selected_plan == i)
             border_col = (0, 200, 120) if is_sel else (70, 70, 90)
             cv2.rectangle(frame, (mx+14, row_y), (mx+mw-14, row_y+54), (38, 38, 48), -1)
             cv2.rectangle(frame, (mx+14, row_y), (mx+mw-14, row_y+54), border_col, 1)
-
-            # Plan label & desc
             cv2.putText(frame, f"  {plan['label']}  —  Rp {plan['price']:,}".replace(",", "."),
                         (mx+22, row_y+22), cv2.FONT_HERSHEY_SIMPLEX, 0.52,
                         (255, 255, 255), 1, cv2.LINE_AA)
             cv2.putText(frame, f"  {plan['desc']}",
                         (mx+22, row_y+40), cv2.FONT_HERSHEY_SIMPLEX, 0.38,
                         (150, 150, 150), 1, cv2.LINE_AA)
-
-            # Beli button
             bx1 = mx + mw - 82
             bx2 = mx + mw - 18
             by1 = row_y + 12
@@ -169,8 +128,6 @@ class WatermarkUI:
                         (bx1+14, by2-8), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 1, cv2.LINE_AA)
             self.beli_rects.append((bx1, by1, bx2, by2))
-
-        # Close modal hint
         cv2.putText(frame, "[ ESC ] Tutup",
                     (mx + mw - 100, my + mh - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.36,
@@ -185,13 +142,10 @@ class WatermarkUI:
                     f"Gagal! Saldo anda kurang  (butuh Rp {plan['price']:,})".replace(",", ".")
                 )
                 return
-        # click outside modal card → close
         cx1, cy1 = self.modal_x, self.modal_y
         cx2, cy2 = cx1 + self.modal_w, cy1 + self.modal_h
         if not (cx1 <= mx <= cx2 and cy1 <= my <= cy2):
             self.show_modal = False
-
-    # ── toast ─────────────────────────────────────────────────────────────────
 
     def _show_toast(self, msg: str, duration: float = 2.8) -> None:
         self.toast_msg   = msg
@@ -210,6 +164,281 @@ class WatermarkUI:
         cv2.putText(frame, self.toast_msg,
                     (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                     (80, 80, 255), 1, cv2.LINE_AA)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PHOTO CAPTURE + THUMBNAIL HUD
+# ══════════════════════════════════════════════════════════════════════════════
+
+class PhotoCapture:
+    """
+    - Tombol kamera (CENTER-BOTTOM HUD):  klik → simpan foto + prank popup
+    - Thumbnail (kiri tombol kamera)    : klik → preview fullscreen
+    - Fullscreen preview ada tombol [X] (tutup) dan [⬇ Download]
+    """
+
+    BTN_SIZE  = 48   # ukuran tombol kamera
+    THUMB_W   = 64
+    THUMB_H   = 48
+    THUMB_GAP = 10   # jarak thumbnail ke tombol kamera
+
+    def __init__(self, fw: int, fh: int):
+        self.fw = fw
+        self.fh = fh
+
+        # Posisi tombol kamera (center-bottom)
+        self.btn_cx = fw // 2
+        self.btn_cy = fh - self.BTN_SIZE // 2 - 12
+        bs = self.BTN_SIZE // 2
+        self.btn_rect = (self.btn_cx - bs, self.btn_cy - bs,
+                         self.btn_cx + bs, self.btn_cy + bs)
+
+        # Posisi thumbnail (kiri tombol)
+        tx2 = self.btn_rect[0] - self.THUMB_GAP
+        tx1 = tx2 - self.THUMB_W
+        ty1 = self.btn_cy - self.THUMB_H // 2
+        ty2 = ty1 + self.THUMB_H
+        self.thumb_rect = (tx1, ty1, tx2, ty2)
+
+        # State
+        self.last_photo: Optional[np.ndarray] = None   # full-res
+        self.thumb_img:  Optional[np.ndarray] = None   # kecil
+        self.show_preview = False
+        self.last_filename = ""
+
+        # Prank toast
+        self.prank_msg   = ""
+        self.prank_until = 0.0
+
+        # Preview close & download button rects (diisi saat draw)
+        self.prev_close_rect    = (0, 0, 0, 0)
+        self.prev_download_rect = (0, 0, 0, 0)
+
+    # ── public ────────────────────────────────────────────────────────────────
+
+    def trigger_capture(self, frame: np.ndarray) -> None:
+        """Simpan foto dan tampilkan prank popup."""
+        ts = int(time.time())
+        fn = f"photo_{ts}.png"
+        cv2.imwrite(fn, frame)
+        self.last_photo    = frame.copy()
+        self.last_filename = fn
+        self.thumb_img     = cv2.resize(frame, (self.THUMB_W, self.THUMB_H))
+        # Prank popup
+        self.prank_msg   = "Berhasil mengambil Rp74.900 saldo dari rekening anda!"
+        self.prank_until = time.time() + 4.0
+        print(f"[SNAP] Foto disimpan: {fn}")
+
+    def handle_click(self, mx: int, my: int) -> bool:
+        """
+        Return True jika klik mengenai tombol kamera.
+        Juga handle klik thumbnail & preview.
+        """
+        if self.show_preview:
+            return self._handle_preview_click(mx, my)
+
+        # Klik tombol kamera
+        x1, y1, x2, y2 = self.btn_rect
+        if x1 <= mx <= x2 and y1 <= my <= y2:
+            return True   # sinyal ke luar supaya trigger_capture dipanggil dengan frame
+
+        # Klik thumbnail
+        if self.thumb_img is not None:
+            tx1, ty1, tx2, ty2 = self.thumb_rect
+            if tx1 <= mx <= tx2 and ty1 <= my <= ty2:
+                self.show_preview = True
+        return False
+
+    def draw(self, frame: np.ndarray) -> np.ndarray:
+        """Gambar tombol kamera, thumbnail, preview, dan prank toast."""
+        if self.show_preview and self.last_photo is not None:
+            self._draw_preview(frame)
+        else:
+            self._draw_camera_btn(frame)
+            self._draw_thumbnail(frame)
+        self._draw_prank(frame)
+        return frame
+
+    # ── kamera button ─────────────────────────────────────────────────────────
+
+    def _draw_camera_btn(self, frame: np.ndarray) -> None:
+        x1, y1, x2, y2 = self.btn_rect
+        cx, cy = self.btn_cx, self.btn_cy
+
+        # Background lingkaran
+        cv2.circle(frame, (cx, cy), self.BTN_SIZE // 2, (40, 40, 40), -1)
+        cv2.circle(frame, (cx, cy), self.BTN_SIZE // 2, (200, 200, 200), 2)
+
+        # Ikon kamera — body
+        bw, bh = 26, 18
+        bx1 = cx - bw // 2
+        by1 = cy - bh // 2
+        bx2 = bx1 + bw
+        by2 = by1 + bh
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (220, 220, 220), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (80, 80, 80), 1)
+
+        # Tonjolan atas (viewfinder bump)
+        cv2.rectangle(frame, (cx-6, by1-5), (cx+6, by1), (220, 220, 220), -1)
+
+        # Lensa
+        cv2.circle(frame, (cx, cy), 6, (60, 60, 60), -1)
+        cv2.circle(frame, (cx, cy), 6, (180, 180, 180), 1)
+        cv2.circle(frame, (cx-2, cy-2), 2, (255, 255, 255), -1)   # kilap
+
+        # Flash dot kiri atas
+        cv2.circle(frame, (bx1+4, by1+4), 2, (255, 220, 50), -1)
+
+    # ── thumbnail ─────────────────────────────────────────────────────────────
+
+    def _draw_thumbnail(self, frame: np.ndarray) -> None:
+        tx1, ty1, tx2, ty2 = self.thumb_rect
+        if self.thumb_img is not None:
+            frame[ty1:ty2, tx1:tx2] = self.thumb_img
+            cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (0, 220, 255), 1)
+            # Label kecil
+            cv2.putText(frame, "TAP", (tx1+2, ty2-3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.28, (0, 220, 255), 1, cv2.LINE_AA)
+        else:
+            # Placeholder kosong
+            cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (60, 60, 60), -1)
+            cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (100, 100, 100), 1)
+            cv2.putText(frame, "?", (tx1 + self.THUMB_W//2 - 5, ty1 + self.THUMB_H//2 + 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1, cv2.LINE_AA)
+
+    # ── preview fullscreen ────────────────────────────────────────────────────
+
+    def _draw_preview(self, frame: np.ndarray) -> None:
+        fw, fh = self.fw, self.fh
+
+        # Overlay gelap
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, 0), (fw, fh), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+
+        # Foto di tengah
+        ph = int(fh * 0.75)
+        pw = int(ph * fw / fh)
+        px = (fw - pw) // 2
+        py = (fh - ph) // 2
+        resized = cv2.resize(self.last_photo, (pw, ph))
+        frame[py:py+ph, px:px+pw] = resized
+        cv2.rectangle(frame, (px, py), (px+pw, py+ph), (0, 220, 255), 2)
+
+        # ── Tombol [X] Tutup ──────────────────────────────────────────────────
+        cx1, cy1 = px + pw - 36, py + 8
+        cx2, cy2 = px + pw - 8, py + 36
+        cv2.rectangle(frame, (cx1, cy1), (cx2, cy2), (60, 40, 40), -1)
+        cv2.rectangle(frame, (cx1, cy1), (cx2, cy2), (200, 80, 80), 1)
+        ccx, ccy = (cx1+cx2)//2, (cy1+cy2)//2
+        cv2.line(frame, (ccx-6, ccy-6), (ccx+6, ccy+6), (255, 80, 80), 2)
+        cv2.line(frame, (ccx+6, ccy-6), (ccx-6, ccy+6), (255, 80, 80), 2)
+        self.prev_close_rect = (cx1, cy1, cx2, cy2)
+
+        # ── Tombol [⬇ Download] ───────────────────────────────────────────────
+        dw, dh = 130, 32
+        dx1 = (fw - dw) // 2
+        dy1 = py + ph + 12
+        dx2 = dx1 + dw
+        dy2 = dy1 + dh
+        cv2.rectangle(frame, (dx1, dy1), (dx2, dy2), (0, 140, 60), -1)
+        cv2.rectangle(frame, (dx1, dy1), (dx2, dy2), (0, 220, 100), 1)
+        cv2.putText(frame, "Simpan / Download", (dx1+6, dy2-9),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
+        self.prev_download_rect = (dx1, dy1, dx2, dy2)
+
+        # Nama file
+        cv2.putText(frame, self.last_filename, (px, py - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (160, 160, 160), 1, cv2.LINE_AA)
+
+    def _handle_preview_click(self, mx: int, my: int) -> bool:
+        # Tutup
+        cx1, cy1, cx2, cy2 = self.prev_close_rect
+        if cx1 <= mx <= cx2 and cy1 <= my <= cy2:
+            self.show_preview = False
+            return False
+
+        # Download — buka file manager / copy path (OpenCV tidak bisa open dialog,
+        # jadi kita cetak path ke console dan tambahkan toast)
+        dx1, dy1, dx2, dy2 = self.prev_download_rect
+        if dx1 <= mx <= dx2 and dy1 <= my <= dy2:
+            import os
+            abs_path = os.path.abspath(self.last_filename)
+            print(f"[DOWNLOAD] File tersimpan di: {abs_path}")
+            self.prank_msg   = f"Disimpan: {self.last_filename}"
+            self.prank_until = time.time() + 2.5
+            return False
+        return False
+
+    # ── prank toast ───────────────────────────────────────────────────────────
+
+    def _draw_prank(self, frame: np.ndarray) -> None:
+        if not self.prank_msg or time.time() > self.prank_until:
+            self.prank_msg = ""
+            return
+
+        lines = self.prank_msg.split("\n")
+        font  = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.65
+        thick = 2
+        padding = 18
+        line_h  = 34
+
+        max_w = max(cv2.getTextSize(l, font, scale, thick)[0][0] for l in lines)
+        total_h = len(lines) * line_h + padding
+
+        bx1 = (self.fw - max_w) // 2 - padding
+        by1 = self.fh // 2 - total_h // 2
+        bx2 = bx1 + max_w + padding * 2
+        by2 = by1 + total_h + padding
+
+        # Panel
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (bx1-4, by1-4), (bx2+4, by2+4), (0, 0, 200), -1)
+        cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (30, 30, 180), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (100, 100, 255), 2)
+
+        # Ikon warning
+        cv2.putText(frame, "! PERINGATAN !", (bx1+padding, by1+24),
+                    font, 0.55, (255, 255, 50), 2, cv2.LINE_AA)
+        cv2.line(frame, (bx1, by1+32), (bx2, by1+32), (80, 80, 200), 1)
+
+        for i, line in enumerate(lines):
+            (tw, _), _ = cv2.getTextSize(line, font, scale, thick)
+            tx = (self.fw - tw) // 2
+            ty = by1 + 52 + i * line_h
+            cv2.putText(frame, line, (tx, ty), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# THUMBS UP GESTURE DETECTOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ThumbsUpChecker:
+    """
+    Deteksi gesture 👍 (jempol naik):
+    - Ibu jari (tip 4) jauh lebih tinggi dari pangkalnya (CMC 2)
+    - Keempat jari lain menekuk (tip y > pip y)
+    """
+
+    @staticmethod
+    def is_thumbs_up(landmarks) -> bool:
+        lm = landmarks
+
+        # Ibu jari tegak: tip.y jauh lebih kecil (atas) dari IP joint
+        thumb_tip = lm[4]
+        thumb_ip  = lm[3]
+        thumb_mcp = lm[2]
+        thumb_up  = (thumb_tip.y < thumb_ip.y - 0.04) and (thumb_tip.y < thumb_mcp.y - 0.06)
+
+        # Keempat jari menekuk: tip.y > pip.y
+        fingers_curled = all(
+            lm[tip].y > lm[pip].y + 0.02
+            for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]
+        )
+
+        return thumb_up and fingers_curled
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -333,17 +562,10 @@ class GeometryUtils:
 
     @staticmethod
     def is_peace(landmarks, w: int, h: int) -> bool:
-        """
-        Peace / victory sign: jari telunjuk (8) & tengah (12) tegak,
-        jari manis (16) & kelingking (20) menekuk ke telapak.
-        Ibu jari (4) tidak diperhitungkan.
-        """
         def tip_above_pip(tip_idx, pip_idx):
-            return landmarks[tip_idx].y < landmarks[pip_idx].y  # y lebih kecil = lebih atas
-
+            return landmarks[tip_idx].y < landmarks[pip_idx].y
         def tip_below_pip(tip_idx, pip_idx):
             return landmarks[tip_idx].y > landmarks[pip_idx].y + 0.04
-
         index_up  = tip_above_pip(8, 6)
         middle_up = tip_above_pip(12, 10)
         ring_down = tip_below_pip(16, 14)
@@ -403,16 +625,6 @@ class FaceFilterProcessor:
 import psutil, platform, datetime
 
 class FPVHud:
-    """
-    Full FPV-style heads-up display.
-    Layout:
-      TOP-LEFT     : mode, filter, face, gesture aktif
-      TOP-RIGHT    : waktu, FPS, RAM, CPU, platform
-      BOTTOM-LEFT  : koordinat tiap fingertip tangan
-      CENTER-TOP   : crosshair + artificial horizon bar
-      BOTTOM-CENTER: gesture legend
-    """
-
     FONT       = cv2.FONT_HERSHEY_SIMPLEX
     MONO       = cv2.FONT_HERSHEY_PLAIN
     C_GREEN    = (0, 255, 120)
@@ -423,10 +635,7 @@ class FPVHud:
     C_ORANGE   = (0, 165, 255)
     C_DIM      = (90, 90, 90)
     C_TEAL     = (180, 255, 100)
-
-    # finger label per tip index
     FINGER_LABELS = {4: "THB", 8: "IDX", 12: "MID", 16: "RNG", 20: "PNK"}
-
     _fps_buf: List[float] = []
     _last_ts: float = 0.0
 
@@ -438,14 +647,12 @@ class FPVHud:
         h, w = frame.shape[:2]
         now  = time.time()
 
-        # ── FPS rolling average ───────────────────────────────────────────────
         if cls._last_ts:
             cls._fps_buf.append(1.0 / max(now - cls._last_ts, 1e-6))
             if len(cls._fps_buf) > 30: cls._fps_buf.pop(0)
         cls._last_ts = now
         fps = sum(cls._fps_buf) / len(cls._fps_buf) if cls._fps_buf else 0.0
 
-        # ── System stats ──────────────────────────────────────────────────────
         ram      = psutil.virtual_memory()
         cpu_pct  = psutil.cpu_percent(interval=None)
         ram_used = ram.used  / (1024**2)
@@ -455,7 +662,6 @@ class FPVHud:
         date_str = datetime.datetime.now().strftime("%d/%m/%Y")
         os_str   = platform.system().upper()[:3]
 
-        # ── Semi-transparent panel helpers ────────────────────────────────────
         def panel(x1, y1, x2, y2, alpha=0.35):
             ovl = frame.copy()
             cv2.rectangle(ovl, (x1, y1), (x2, y2), (0, 0, 0), -1)
@@ -471,7 +677,7 @@ class FPVHud:
             cv2.rectangle(frame, (x, y), (x+int(bw*pct/100), y+bh), fg, -1)
             cv2.rectangle(frame, (x, y), (x+bw, y+bh), cls.C_DIM, 1)
 
-        # ══ TOP-LEFT — mode & filter ══════════════════════════════════════════
+        # ══ TOP-LEFT
         panel(4, 4, 310, 115)
         cv2.rectangle(frame, (4,4), (310,115), cls.C_CYAN, 1)
         mode_str  = "3D-MESH" if proc.is_3d_mode else ("2D-BOWTIE" if is_bowtie else "2D-QUAD")
@@ -479,20 +685,17 @@ class FPVHud:
         txt(f"MODE   {mode_str}",          14, 24,  cls.C_CYAN,   0.50, 1)
         txt(f"FILTER {proc.current_filter.upper()}", 14, 44, cls.C_WHITE, 0.50, 1)
         txt(f"HANDS  {len(all_tips)}  |  {face_str}", 14, 64, cls.C_TEAL,  0.45, 1)
-
-        # active gestures
         gestures = []
-        if peace_active:       gestures.append("✌ BLUR")
-        if fist_count == 2:    gestures.append("✊✊ MODE")
-        if fist_count == 1:    gestures.append("✊ FIST")
-        g_str = "  ".join(gestures) if gestures else "—"
+        if peace_active:       gestures.append("V BLUR")
+        if fist_count == 2:    gestures.append("FIST2 MODE")
+        if fist_count == 1:    gestures.append("FIST")
+        g_str = "  ".join(gestures) if gestures else "-"
         txt(f"GESTURE {g_str}", 14, 84, cls.C_ORANGE, 0.45, 1)
         txt(f"NEXT   {proc.secondary_filter.upper()}", 14, 104, cls.C_DIM, 0.40, 1)
 
-        # ══ TOP-RIGHT — system stats ══════════════════════════════════════════
+        # ══ TOP-RIGHT
         panel(w-220, 4, w-4, 155)
         cv2.rectangle(frame, (w-220,4), (w-4,155), cls.C_GREEN, 1)
-
         rx = w - 210
         txt(f"{ts_str}  {date_str}",  rx, 22,  cls.C_YELLOW, 0.48, 1)
         txt(f"FPS  {fps:5.1f}",       rx, 42,  cls.C_GREEN,  0.48, 1)
@@ -500,40 +703,32 @@ class FPVHud:
         txt(f"CPU  {cpu_pct:4.1f}%",  rx, 80,  cls.C_WHITE,  0.45, 1)
         bar_h(rx, 86, 190, 5, cpu_pct,
               cls.C_GREEN if cpu_pct < 60 else cls.C_ORANGE if cpu_pct < 85 else cls.C_RED)
-
         txt(f"RAM  {ram_used:.0f}/{ram_tot:.0f} MB", rx, 106, cls.C_WHITE, 0.45, 1)
         bar_h(rx, 112, 190, 5, ram_pct,
               cls.C_CYAN if ram_pct < 60 else cls.C_ORANGE if ram_pct < 85 else cls.C_RED)
         txt(f"     {ram_pct:.1f}%",   rx, 128, cls.C_DIM,   0.38, 1)
+        txt(f"RES  {w}x{h}", rx, 148, cls.C_DIM, 0.40, 1)
 
-        res_str = f"RES  {w}x{h}"
-        txt(res_str, rx, 148, cls.C_DIM, 0.40, 1)
-
-        # ══ CENTER-TOP — crosshair + artificial horizon ═══════════════════════
+        # ══ CENTER crosshair
         cx, cy = w//2, h//2
         arm = 18; gap = 6
         col_ch = cls.C_GREEN
-        # crosshair
         cv2.line(frame, (cx-arm-gap, cy), (cx-gap, cy), col_ch, 1)
         cv2.line(frame, (cx+gap, cy), (cx+arm+gap, cy), col_ch, 1)
         cv2.line(frame, (cx, cy-arm-gap), (cx, cy-gap), col_ch, 1)
         cv2.line(frame, (cx, cy+gap), (cx, cy+arm+gap), col_ch, 1)
         cv2.circle(frame, (cx, cy), 3, col_ch, -1)
         cv2.circle(frame, (cx, cy), arm+gap+4, col_ch, 1)
-
-        # artificial horizon bar (static decoration)
         blen = 80
         cv2.line(frame, (cx-blen, cy-1), (cx-gap-4, cy-1), cls.C_YELLOW, 2)
         cv2.line(frame, (cx+gap+4, cy-1), (cx+blen, cy-1), cls.C_YELLOW, 2)
-        txt("0°", cx+blen+4, cy+4, cls.C_YELLOW, 0.35, 1)
-
-        # frame corner brackets
+        txt("0 deg", cx+blen+4, cy+4, cls.C_YELLOW, 0.35, 1)
         brk = 20; bt = 2; bc = cls.C_GREEN
         for (px,py,sx,sy) in [(0,0,1,1),(w,0,-1,1),(0,h,1,-1),(w,h,-1,-1)]:
             cv2.line(frame,(px,py),(px+sx*brk,py),bc,bt)
             cv2.line(frame,(px,py),(px,py+sy*brk),bc,bt)
 
-        # ══ BOTTOM-LEFT — hand fingertip coordinates ══════════════════════════
+        # ══ BOTTOM-LEFT fingertip coords
         if all_tips:
             hand_labels = ["L-HAND","R-HAND"]
             base_y = h - 10 - len(all_tips) * 75
@@ -541,36 +736,37 @@ class FPVHud:
             cv2.rectangle(frame, (4, base_y-14), (220, h-4), cls.C_CYAN, 1)
             for hi, tips in enumerate(all_tips):
                 label = hand_labels[hi] if hi < 2 else f"HAND{hi}"
-                txt(f"── {label} ──", 10, base_y + hi*75, cls.C_CYAN, 0.42, 1)
+                txt(f"-- {label} --", 10, base_y + hi*75, cls.C_CYAN, 0.42, 1)
                 tip_indices = [4, 8, 12, 16, 20]
                 for fi, (tx, ty) in enumerate(tips):
                     fname = cls.FINGER_LABELS.get(tip_indices[fi], f"F{fi}")
-                    col = cls.C_YELLOW if fi == 1 else cls.C_WHITE  # IDX highlight
+                    col = cls.C_YELLOW if fi == 1 else cls.C_WHITE
                     txt(f"  {fname}  X:{tx:4d}  Y:{ty:4d}",
                         10, base_y + hi*75 + 14 + fi*12,
                         col, 0.37, 1)
 
-        # ══ BOTTOM-CENTER — gesture legend ════════════════════════════════════
+        # ══ BOTTOM-CENTER legend (NOTE: tombol kamera digambar oleh PhotoCapture,
+        #    jadi legend kita geser sedikit ke atas agar tidak nabrak)
         legend = [
             ("PINCH",     "NEXT FILTER"),
-            ("✌  PEACE",  "BLUR FRAME"),
-            ("✊✊ 2-FIST", "TOGGLE MODE"),
+            ("V PEACE",   "BLUR FRAME"),
+            ("FIST x2",   "TOGGLE MODE"),
+            ("THUMB UP",  "CLOSE APP"),
             ("N/P",       "FILTER STEP"),
             ("F",         "FACE ON/OFF"),
-            ("C",         "MODE TOGGLE"),
         ]
         lw = 230; lh = len(legend)*14 + 10
-        lx = (w - lw) // 2; ly = h - lh - 6
+        lx = (w - lw) // 2 + 90   # geser kanan supaya tidak nabrak thumbnail+kamera
+        ly = h - lh - 75
         panel(lx, ly, lx+lw, ly+lh)
         cv2.rectangle(frame, (lx,ly), (lx+lw,ly+lh), cls.C_DIM, 1)
         for i,(gesture,action) in enumerate(legend):
             gy = ly + 12 + i*14
             txt(f"{gesture:<12} {action}", lx+6, gy, cls.C_DIM, 0.35, 1)
 
-        # ══ SCAN LINE effect (subtle) ═════════════════════════════════════════
+        # ══ SCAN LINE
         for y_sl in range(0, h, 6):
             cv2.line(frame, (0, y_sl), (w, y_sl), (0,0,0), 1)
-        # blend scanlines lightly
         ovl2 = frame.copy()
         cv2.addWeighted(ovl2, 0.92, frame, 0.08, 0, frame)
 
@@ -626,6 +822,12 @@ class PortalProcessor:
 
         self.face_proc    = FaceFilterProcessor(cfg)
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
+        self.photo_cap    = PhotoCapture(cfg.frame_width, cfg.frame_height)
+
+        # Flag jempol untuk animasi close
+        self._thumbsup_triggered = False
+        self._thumbsup_frame_start = 0.0
+        self._should_quit = False
 
     @property
     def current_filter(self): return self.filter_keys[self.active_filter_idx]
@@ -651,7 +853,8 @@ class PortalProcessor:
         cv2.polylines(frame, [poly], True, (255,255,255), 2)
         return frame
 
-    def process_frame(self, frame: np.ndarray) -> np.ndarray:
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
+        """Return (processed_frame, should_quit)"""
         frame   = cv2.flip(frame, 1)
         frame   = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height))
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -661,7 +864,8 @@ class PortalProcessor:
         all_tips    = []
         fist_count  = 0
         is_bowtie   = False
-        peace_count = 0  # dua jari (peace/victory) → blur seluruh frame
+        peace_count = 0
+        thumbsup    = False
 
         if results.multi_hand_landmarks:
             for hand_lm in results.multi_hand_landmarks:
@@ -669,13 +873,19 @@ class PortalProcessor:
                 lm   = hand_lm.landmark
                 tips = [(int(lm[i].x*self.cfg.frame_width), int(lm[i].y*self.cfg.frame_height)) for i in [4,8,12,16,20]]
                 all_tips.append(tips)
+
                 if GeometryUtils.euclidean_dist(tips[0], tips[4]) < self.cfg.pinch_threshold_px:
                     if now - self.last_switch_time > self.cfg.filter_cooldown_sec:
                         self.cycle_filter(1); self.last_switch_time = now
+
                 if GeometryUtils.is_fist_closed(lm, self.cfg.frame_width, self.cfg.frame_height, self.cfg.fist_dist_threshold_px):
                     fist_count += 1
+
                 if GeometryUtils.is_peace(lm, self.cfg.frame_width, self.cfg.frame_height):
                     peace_count += 1
+
+                if ThumbsUpChecker.is_thumbs_up(lm):
+                    thumbsup = True
 
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
@@ -698,20 +908,58 @@ class PortalProcessor:
                 elif len(all_tips)==1:
                     t=all_tips[0]; self.render_portal(frame, [t[0],t[1],t[2],t[4]], self.current_filter)
 
-        # ── Peace gesture → blur seluruh frame ────────────────────────────────
+        # ── Peace → blur seluruh frame ─────────────────────────────────────────
         if peace_count > 0:
             frame = cv2.GaussianBlur(frame, (31, 31), 0)
-            cv2.putText(frame, "✌ BLUR MODE", (15, 100),
+            cv2.putText(frame, "V BLUR MODE", (15, 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 180), 2, cv2.LINE_AA)
+
+        # ── 👍 Thumbs Up → blur + nama + quit ──────────────────────────────────
+        if thumbsup:
+            if not self._thumbsup_triggered:
+                self._thumbsup_triggered    = True
+                self._thumbsup_frame_start  = now
+            elapsed = now - self._thumbsup_frame_start
+
+            # Blur makin kuat seiring waktu
+            ksize = min(99, int(elapsed * 30) * 2 + 1)
+            if ksize % 2 == 0: ksize += 1
+            frame = cv2.GaussianBlur(frame, (ksize, ksize), 0)
+
+            # Nama besar di tengah
+            name_text = "Mas Faisal Ganteng :D"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 1.4
+            thick = 3
+            fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
+            (tw, th), _ = cv2.getTextSize(name_text, font, scale, thick)
+            tx = (fw_f - tw) // 2
+            ty = fh_f // 2 + th // 2
+
+            # Shadow
+            cv2.putText(frame, name_text, (tx+3, ty+3), font, scale, (0,0,0), thick+2, cv2.LINE_AA)
+            # Warna gradasi waktu
+            r = int(abs(np.sin(elapsed * 3)) * 255)
+            g = int(abs(np.cos(elapsed * 2)) * 200)
+            cv2.putText(frame, name_text, (tx, ty), font, scale, (r, g, 255), thick, cv2.LINE_AA)
+
+            # Sub-teks
+            sub = "Signed out... Bye! 👋"
+            (sw, _), _ = cv2.getTextSize(sub, font, 0.6, 1)
+            cv2.putText(frame, sub, ((fw_f-sw)//2, ty+44), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+
+            if elapsed > 2.5:
+                self._should_quit = True
 
         face_count = 0
         if self.face_mode:
             frame, face_count = self.face_proc.apply(frame, self.filters[self.current_filter])
 
         self._draw_hud(frame, is_bowtie, face_count, all_tips, peace_count > 0, fist_count)
-        # Watermark — selalu terakhir, di atas semua layer
         self.watermark_ui.draw(frame)
-        return frame
+        self.photo_cap.draw(frame)
+
+        return frame, self._should_quit
 
     def _draw_hud(self, frame, is_bowtie, face_count, all_tips=None, peace_active=False, fist_count=0):
         FPVHud.draw(frame, self, is_bowtie, face_count,
@@ -726,11 +974,18 @@ class PortalProcessor:
 # MOUSE CALLBACK
 # ══════════════════════════════════════════════════════════════════════════════
 
-_watermark_ui_ref: Optional[WatermarkUI] = None
+_processor_ref: Optional[PortalProcessor] = None
+_pending_capture = False
 
 def _on_mouse(event, x, y, flags, param):
-    if event == cv2.EVENT_LBUTTONDOWN and _watermark_ui_ref:
-        _watermark_ui_ref.handle_click(x, y)
+    global _pending_capture
+    if event == cv2.EVENT_LBUTTONDOWN:
+        if _processor_ref:
+            # Cek watermark dulu
+            _processor_ref.watermark_ui.handle_click(x, y)
+            # Cek photo capture
+            if _processor_ref.photo_cap.handle_click(x, y):
+                _pending_capture = True
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -738,10 +993,11 @@ def _on_mouse(event, x, y, flags, param):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global _watermark_ui_ref
+    global _processor_ref, _pending_capture
+
     cfg       = PipelineConfig()
     processor = PortalProcessor(cfg)
-    _watermark_ui_ref = processor.watermark_ui
+    _processor_ref = processor
 
     cap = cv2.VideoCapture(cfg.cam_index)
     if not cap.isOpened():
@@ -753,14 +1009,27 @@ def main():
 
     print("=== RetroLens Engine — Powered by Faisaldev ===")
     print("Q        : Quit | C : Toggle mode | N/P : Filter")
-    print("F        : Toggle face filter | S : Screenshot")
+    print("F        : Toggle face filter")
+    print("[Klik ikon kamera] : Ambil foto")
+    print("[Acungkan jempol]  : Blur + nama + close")
 
     while True:
         ret, frame = cap.read()
         if not ret: break
 
-        out = processor.process_frame(frame)
+        # Capture foto jika tombol kamera diklik
+        if _pending_capture:
+            _pending_capture = False
+            processor.photo_cap.trigger_capture(
+                cv2.resize(cv2.flip(frame, 1), (cfg.frame_width, cfg.frame_height))
+            )
+
+        out, should_quit = processor.process_frame(frame)
         cv2.imshow(win, out)
+
+        if should_quit:
+            print("[BYE] Mas Faisal Ganteng telah menutup program!")
+            break
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -773,10 +1042,7 @@ def main():
             processor.cycle_filter(-1)
         elif key == ord("f"):
             processor.face_mode = not processor.face_mode
-        elif key == ord("s"):
-            fn = f"cap_{int(time.time())}.png"
-            cv2.imwrite(fn, out); print(f"[SNAP] {fn}")
-        elif key == 27:  # ESC tutup modal
+        elif key == 27:
             processor.watermark_ui.show_modal = False
 
     processor.close()
