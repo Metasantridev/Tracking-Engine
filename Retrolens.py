@@ -766,8 +766,8 @@ class FPVHud:
 @dataclass
 class PipelineConfig:
     cam_index: int = 0
-    frame_width: int = 1280
-    frame_height: int = 720
+    frame_width: int = 1920
+    frame_height: int = 1080
     pinch_threshold_px: float = 45.0
     filter_cooldown_sec: float = 0.15
     mode_cooldown_sec: float = 1.2
@@ -970,6 +970,8 @@ class IntroScreen:
         "Selamat datang di Tracking Engine.",
         "Sistem siap digunakan.",
         "",
+        "Requested by Mas Rofiqz RJS",
+        "",
         "In engineer we trust.",
         "— Faisaldev",
     ]
@@ -1128,6 +1130,9 @@ class IntroScreen:
             elif i == len(self._lines) - 1:
                 color = (180, 180, 180)      # abu — "— Faisaldev"
                 scale = 0.45; thick = 1
+            elif "Requested by" in line:
+                color = (0, 215, 255)        # gold — "Requested by Mas Rofiqz RJS"
+                scale = 0.58; thick = 2
             elif "In engineer" in line:
                 color = (0, 215, 255)        # kuning
                 scale = 0.58; thick = 1
@@ -1198,8 +1203,8 @@ def main():
         print("[ERROR] Kamera tidak terdeteksi!"); return
 
     # Set resolusi kamera ke HD secara hardware
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
