@@ -584,6 +584,55 @@ class GeometryUtils:
 # FACE FILTER
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Emoji list yang muncul di atas wajah — bisa diganti sesuka hati ──────────
+FACE_EMOJIS = ["😎", "🤩", "👻", "🤖", "🐸", "😂", "🔥", "💀"]
+# Index emoji aktif (0 = 😎). Tekan E di keyboard untuk ganti.
+_active_emoji_idx = 0
+
+
+def _draw_emoji_on_frame(frame: np.ndarray, cx: int, cy: int, size: int, emoji: str) -> None:
+    """
+    Render emoji pakai PIL supaya bisa unicode, lalu blend ke frame OpenCV.
+    Kalau PIL tidak ada, fallback ke teks ASCII.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import os
+
+        pil_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw    = ImageDraw.Draw(pil_img)
+
+        # Cari font emoji — Windows / Linux / Mac
+        font_paths = [
+            "C:/Windows/Fonts/seguiemj.ttf",      # Windows Segoe UI Emoji
+            "C:/Windows/Fonts/seguisym.ttf",
+            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+            "/System/Library/Fonts/Apple Color Emoji.ttc",
+        ]
+        font = None
+        for fp in font_paths:
+            if os.path.exists(fp):
+                try:
+                    font = ImageFont.truetype(fp, size)
+                    break
+                except Exception:
+                    continue
+        if font is None:
+            font = ImageFont.load_default()
+
+        # Gambar emoji di atas kepala
+        draw.text((cx - size // 2, cy - size - 10), emoji, font=font, embedded_color=True)
+        frame[:] = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    except Exception:
+        # Fallback ASCII jika PIL tidak ada
+        label = {
+            "😎": ":)", "🤩": "*_*", "👻": "BOO", "🤖": "[AI]",
+            "🐸": "PEPE", "😂": "LOL", "🔥": "HOT", "💀": "DEAD"
+        }.get(emoji, "?")
+        cv2.putText(frame, label, (cx - 20, cy - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 200), 2, cv2.LINE_AA)
+
+
 class FaceFilterProcessor:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -593,6 +642,7 @@ class FaceFilterProcessor:
             min_detection_confidence=0.7, min_tracking_confidence=0.6)
 
     def apply(self, frame, filter_fn):
+        global _active_emoji_idx
         h, w = frame.shape[:2]
         results = self.detector.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         face_count = 0
@@ -613,6 +663,14 @@ class FaceFilterProcessor:
             m = cv2.merge([mask,mask,mask]).astype(np.float32)/255.0
             frame[y:y+bh, x:x+bw] = (filtered*m + roi*(1-m)).astype(np.uint8)
             cv2.polylines(frame, [oval_pts], True, (0,220,255), 1)
+
+            # Emoji di atas kepala
+            head_x = int(face_lm.landmark[10].x * w)
+            head_y = int(face_lm.landmark[10].y * h)
+            emoji  = FACE_EMOJIS[_active_emoji_idx % len(FACE_EMOJIS)]
+            emoji_size = max(32, bw // 2)
+            _draw_emoji_on_frame(frame, head_x, head_y, emoji_size, emoji)
+
         return frame, face_count
 
     def close(self): self.detector.close()
@@ -751,7 +809,7 @@ class FPVHud:
             ("PINCH",     "NEXT FILTER"),
             ("V PEACE",   "BLUR FRAME"),
             ("FIST x2",   "TOGGLE MODE"),
-            ("THUMB UP",  "CLOSE APP"),
+            ("THUMB UP",  "POPUP NAME"),
             ("N/P",       "FILTER STEP"),
             ("F",         "FACE ON/OFF"),
         ]
@@ -827,7 +885,6 @@ class PortalProcessor:
         # Flag jempol untuk animasi close
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
-        self._should_quit = False
 
     @property
     def current_filter(self): return self.filter_keys[self.active_filter_idx]
@@ -854,7 +911,7 @@ class PortalProcessor:
         return frame
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
-        """Return (processed_frame, should_quit)"""
+        """Return processed_frame."""
         frame   = cv2.flip(frame, 1)
         frame   = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height))
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -914,42 +971,29 @@ class PortalProcessor:
             cv2.putText(frame, "V BLUR MODE", (15, 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 180), 2, cv2.LINE_AA)
 
-        # ── 👍 Thumbs Up → blur + nama + quit ──────────────────────────────────
+        # ── 👍 Thumbs Up → popup toast "Mas Faisal Ganteng" ──────────────────
         if thumbsup:
             if not self._thumbsup_triggered:
-                self._thumbsup_triggered    = True
-                self._thumbsup_frame_start  = now
-            elapsed = now - self._thumbsup_frame_start
-
-            # Blur makin kuat seiring waktu
-            ksize = min(99, int(elapsed * 30) * 2 + 1)
-            if ksize % 2 == 0: ksize += 1
-            frame = cv2.GaussianBlur(frame, (ksize, ksize), 0)
-
-            # Nama besar di tengah
+                self._thumbsup_triggered   = True
+                self._thumbsup_frame_start = now
+                # Tampilkan toast via photo_cap (pakai sistem prank-nya)
+                self.photo_cap.prank_msg   = "Mas Faisal Ganteng  😎👍"
+                self.photo_cap.prank_until = now + 3.0
+            # Nama besar di tengah selama gesture aktif
             name_text = "Mas Faisal Ganteng :D"
             font = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 1.4
-            thick = 3
+            scale = 1.4; thick = 3
             fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
+            elapsed = now - self._thumbsup_frame_start
             (tw, th), _ = cv2.getTextSize(name_text, font, scale, thick)
             tx = (fw_f - tw) // 2
             ty = fh_f // 2 + th // 2
-
-            # Shadow
             cv2.putText(frame, name_text, (tx+3, ty+3), font, scale, (0,0,0), thick+2, cv2.LINE_AA)
-            # Warna gradasi waktu
             r = int(abs(np.sin(elapsed * 3)) * 255)
             g = int(abs(np.cos(elapsed * 2)) * 200)
             cv2.putText(frame, name_text, (tx, ty), font, scale, (r, g, 255), thick, cv2.LINE_AA)
-
-            # Sub-teks
-            sub = "Signed out... Bye! 👋"
-            (sw, _), _ = cv2.getTextSize(sub, font, 0.6, 1)
-            cv2.putText(frame, sub, ((fw_f-sw)//2, ty+44), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
-
-            if elapsed > 2.5:
-                self._should_quit = True
+        else:
+            self._thumbsup_triggered = False
 
         face_count = 0
         if self.face_mode:
@@ -959,7 +1003,7 @@ class PortalProcessor:
         self.watermark_ui.draw(frame)
         self.photo_cap.draw(frame)
 
-        return frame, self._should_quit
+        return frame
 
     def _draw_hud(self, frame, is_bowtie, face_count, all_tips=None, peace_active=False, fist_count=0):
         FPVHud.draw(frame, self, is_bowtie, face_count,
@@ -1004,7 +1048,8 @@ def main():
         print("[ERROR] Kamera tidak terdeteksi!"); return
 
     win = "RetroLens Engine"
-    cv2.namedWindow(win)
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(win, _on_mouse)
 
     print("=== RetroLens Engine — Powered by Faisaldev ===")
@@ -1024,12 +1069,8 @@ def main():
                 cv2.resize(cv2.flip(frame, 1), (cfg.frame_width, cfg.frame_height))
             )
 
-        out, should_quit = processor.process_frame(frame)
+        out = processor.process_frame(frame)
         cv2.imshow(win, out)
-
-        if should_quit:
-            print("[BYE] Mas Faisal Ganteng telah menutup program!")
-            break
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -1042,6 +1083,10 @@ def main():
             processor.cycle_filter(-1)
         elif key == ord("f"):
             processor.face_mode = not processor.face_mode
+        elif key == ord("e"):
+            import Retrolens as _rl
+            _rl._active_emoji_idx = (_rl._active_emoji_idx + 1) % len(_rl.FACE_EMOJIS)
+            print(f"[EMOJI] Ganti ke: {_rl.FACE_EMOJIS[_rl._active_emoji_idx]}")
         elif key == 27:
             processor.watermark_ui.show_modal = False
 
