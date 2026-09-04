@@ -332,6 +332,25 @@ class GeometryUtils:
         return np.array([L[0],R[1],R[0],L[1]], dtype=np.int32)
 
     @staticmethod
+    def is_peace(landmarks, w: int, h: int) -> bool:
+        """
+        Peace / victory sign: jari telunjuk (8) & tengah (12) tegak,
+        jari manis (16) & kelingking (20) menekuk ke telapak.
+        Ibu jari (4) tidak diperhitungkan.
+        """
+        def tip_above_pip(tip_idx, pip_idx):
+            return landmarks[tip_idx].y < landmarks[pip_idx].y  # y lebih kecil = lebih atas
+
+        def tip_below_pip(tip_idx, pip_idx):
+            return landmarks[tip_idx].y > landmarks[pip_idx].y + 0.04
+
+        index_up  = tip_above_pip(8, 6)
+        middle_up = tip_above_pip(12, 10)
+        ring_down = tip_below_pip(16, 14)
+        pinky_down= tip_below_pip(20, 18)
+        return index_up and middle_up and ring_down and pinky_down
+
+    @staticmethod
     def face_oval_points(face_lm, w, h):
         OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,
                 397,365,379,378,400,377,152,148,176,149,150,136,
@@ -460,9 +479,10 @@ class PortalProcessor:
         results = self.detector.process(rgb)
         now     = time.time()
 
-        all_tips   = []
-        fist_count = 0
-        is_bowtie  = False
+        all_tips    = []
+        fist_count  = 0
+        is_bowtie   = False
+        peace_count = 0  # dua jari (peace/victory) → blur seluruh frame
 
         if results.multi_hand_landmarks:
             for hand_lm in results.multi_hand_landmarks:
@@ -475,6 +495,8 @@ class PortalProcessor:
                         self.cycle_filter(1); self.last_switch_time = now
                 if GeometryUtils.is_fist_closed(lm, self.cfg.frame_width, self.cfg.frame_height, self.cfg.fist_dist_threshold_px):
                     fist_count += 1
+                if GeometryUtils.is_peace(lm, self.cfg.frame_width, self.cfg.frame_height):
+                    peace_count += 1
 
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
@@ -496,6 +518,12 @@ class PortalProcessor:
                     self.render_portal(frame, quad, self.current_filter)
                 elif len(all_tips)==1:
                     t=all_tips[0]; self.render_portal(frame, [t[0],t[1],t[2],t[4]], self.current_filter)
+
+        # ── Peace gesture → blur seluruh frame ────────────────────────────────
+        if peace_count > 0:
+            frame = cv2.GaussianBlur(frame, (31, 31), 0)
+            cv2.putText(frame, "✌ BLUR MODE", (15, 100),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 180), 2, cv2.LINE_AA)
 
         face_count = 0
         if self.face_mode:
