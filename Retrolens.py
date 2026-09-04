@@ -909,8 +909,8 @@ class PortalProcessor:
         self.mp_hands  = mp.solutions.hands
         self.mp_draw   = mp.solutions.drawing_utils
         self.detector  = self.mp_hands.Hands(
-            static_image_mode=False, max_num_hands=2, model_complexity=1,
-            min_detection_confidence=0.8, min_tracking_confidence=0.8)
+            static_image_mode=False, max_num_hands=2, model_complexity=0,
+            min_detection_confidence=0.6, min_tracking_confidence=0.5)
 
         self.face_proc    = FaceFilterProcessor(cfg)
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
@@ -972,8 +972,10 @@ class PortalProcessor:
         all_tips    = []
         fist_count  = 0
         is_bowtie   = False
-        peace_count = 0
-        thumbsup    = False
+        peace_count      = 0
+        thumbsup         = False
+        sarangeo_any     = False
+        crossed_any      = False
 
         if results.multi_hand_landmarks:
             for hand_lm in results.multi_hand_landmarks:
@@ -996,21 +998,30 @@ class PortalProcessor:
                     thumbsup = True
 
                 if SarangeoChecker.is_sarangeo(lm):
-                    if not self._sarangeo_triggered:
-                        self._sarangeo_triggered   = True
-                        self._sarangeo_quote       = random.choice(CROSSED_QUOTES)
-                        self._sarangeo_quote_until = now + 3.0
-                else:
-                    self._sarangeo_triggered = False
+                    sarangeo_any = True
 
                 if CrossedFingersChecker.is_crossed(lm, self.cfg.frame_width, self.cfg.frame_height):
-                    if not self._crossed_triggered:
-                        self._crossed_triggered   = True
-                        self._crossed_quote       = random.choice(SARANGEO_QUOTES)
-                        self._crossed_quote_until = now + 3.0
-                else:
-                    self._crossed_triggered = False
+                    crossed_any = True
 
+        # ── Sarangeo — trigger sekali, reset saat gesture lepas ───────────────
+        if sarangeo_any:
+            if not self._sarangeo_triggered:
+                self._sarangeo_triggered   = True
+                self._sarangeo_quote       = random.choice(CROSSED_QUOTES)
+                self._sarangeo_quote_until = now + 3.0
+        else:
+            self._sarangeo_triggered = False
+
+        # ── Crossed fingers — trigger sekali, reset saat gesture lepas ────────
+        if crossed_any:
+            if not self._crossed_triggered:
+                self._crossed_triggered   = True
+                self._crossed_quote       = random.choice(SARANGEO_QUOTES)
+                self._crossed_quote_until = now + 3.0
+        else:
+            self._crossed_triggered = False
+
+        if results.multi_hand_landmarks:
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
 
