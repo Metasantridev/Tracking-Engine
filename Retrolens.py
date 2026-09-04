@@ -397,6 +397,185 @@ class FaceFilterProcessor:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FPV DRONE HUD
+# ══════════════════════════════════════════════════════════════════════════════
+
+import psutil, platform, datetime
+
+class FPVHud:
+    """
+    Full FPV-style heads-up display.
+    Layout:
+      TOP-LEFT     : mode, filter, face, gesture aktif
+      TOP-RIGHT    : waktu, FPS, RAM, CPU, platform
+      BOTTOM-LEFT  : koordinat tiap fingertip tangan
+      CENTER-TOP   : crosshair + artificial horizon bar
+      BOTTOM-CENTER: gesture legend
+    """
+
+    FONT       = cv2.FONT_HERSHEY_SIMPLEX
+    MONO       = cv2.FONT_HERSHEY_PLAIN
+    C_GREEN    = (0, 255, 120)
+    C_CYAN     = (0, 220, 255)
+    C_WHITE    = (220, 220, 220)
+    C_YELLOW   = (0, 215, 255)
+    C_RED      = (60, 60, 255)
+    C_ORANGE   = (0, 165, 255)
+    C_DIM      = (90, 90, 90)
+    C_TEAL     = (180, 255, 100)
+
+    # finger label per tip index
+    FINGER_LABELS = {4: "THB", 8: "IDX", 12: "MID", 16: "RNG", 20: "PNK"}
+
+    _fps_buf: List[float] = []
+    _last_ts: float = 0.0
+
+    @classmethod
+    def draw(cls, frame: np.ndarray, proc, is_bowtie: bool,
+             face_count: int, all_tips: list,
+             peace_active: bool, fist_count: int) -> None:
+
+        h, w = frame.shape[:2]
+        now  = time.time()
+
+        # ── FPS rolling average ───────────────────────────────────────────────
+        if cls._last_ts:
+            cls._fps_buf.append(1.0 / max(now - cls._last_ts, 1e-6))
+            if len(cls._fps_buf) > 30: cls._fps_buf.pop(0)
+        cls._last_ts = now
+        fps = sum(cls._fps_buf) / len(cls._fps_buf) if cls._fps_buf else 0.0
+
+        # ── System stats ──────────────────────────────────────────────────────
+        ram      = psutil.virtual_memory()
+        cpu_pct  = psutil.cpu_percent(interval=None)
+        ram_used = ram.used  / (1024**2)
+        ram_tot  = ram.total / (1024**2)
+        ram_pct  = ram.percent
+        ts_str   = datetime.datetime.now().strftime("%H:%M:%S")
+        date_str = datetime.datetime.now().strftime("%d/%m/%Y")
+        os_str   = platform.system().upper()[:3]
+
+        # ── Semi-transparent panel helpers ────────────────────────────────────
+        def panel(x1, y1, x2, y2, alpha=0.35):
+            ovl = frame.copy()
+            cv2.rectangle(ovl, (x1, y1), (x2, y2), (0, 0, 0), -1)
+            cv2.addWeighted(ovl, alpha, frame, 1-alpha, 0, frame)
+
+        def txt(text, x, y, color=None, scale=0.45, thick=1, font=None):
+            cv2.putText(frame, text, (x, y),
+                        font or cls.FONT, scale, color or cls.C_WHITE,
+                        thick, cv2.LINE_AA)
+
+        def bar_h(x, y, bw, bh, pct, fg, bg=(40,40,40)):
+            cv2.rectangle(frame, (x, y), (x+bw, y+bh), bg, -1)
+            cv2.rectangle(frame, (x, y), (x+int(bw*pct/100), y+bh), fg, -1)
+            cv2.rectangle(frame, (x, y), (x+bw, y+bh), cls.C_DIM, 1)
+
+        # ══ TOP-LEFT — mode & filter ══════════════════════════════════════════
+        panel(4, 4, 310, 115)
+        cv2.rectangle(frame, (4,4), (310,115), cls.C_CYAN, 1)
+        mode_str  = "3D-MESH" if proc.is_3d_mode else ("2D-BOWTIE" if is_bowtie else "2D-QUAD")
+        face_str  = f"FACE {face_count}" if proc.face_mode else "FACE OFF"
+        txt(f"MODE   {mode_str}",          14, 24,  cls.C_CYAN,   0.50, 1)
+        txt(f"FILTER {proc.current_filter.upper()}", 14, 44, cls.C_WHITE, 0.50, 1)
+        txt(f"HANDS  {len(all_tips)}  |  {face_str}", 14, 64, cls.C_TEAL,  0.45, 1)
+
+        # active gestures
+        gestures = []
+        if peace_active:       gestures.append("✌ BLUR")
+        if fist_count == 2:    gestures.append("✊✊ MODE")
+        if fist_count == 1:    gestures.append("✊ FIST")
+        g_str = "  ".join(gestures) if gestures else "—"
+        txt(f"GESTURE {g_str}", 14, 84, cls.C_ORANGE, 0.45, 1)
+        txt(f"NEXT   {proc.secondary_filter.upper()}", 14, 104, cls.C_DIM, 0.40, 1)
+
+        # ══ TOP-RIGHT — system stats ══════════════════════════════════════════
+        panel(w-220, 4, w-4, 155)
+        cv2.rectangle(frame, (w-220,4), (w-4,155), cls.C_GREEN, 1)
+
+        rx = w - 210
+        txt(f"{ts_str}  {date_str}",  rx, 22,  cls.C_YELLOW, 0.48, 1)
+        txt(f"FPS  {fps:5.1f}",       rx, 42,  cls.C_GREEN,  0.48, 1)
+        txt(f"OS   {os_str}",         rx, 62,  cls.C_WHITE,  0.45, 1)
+        txt(f"CPU  {cpu_pct:4.1f}%",  rx, 80,  cls.C_WHITE,  0.45, 1)
+        bar_h(rx, 86, 190, 5, cpu_pct,
+              cls.C_GREEN if cpu_pct < 60 else cls.C_ORANGE if cpu_pct < 85 else cls.C_RED)
+
+        txt(f"RAM  {ram_used:.0f}/{ram_tot:.0f} MB", rx, 106, cls.C_WHITE, 0.45, 1)
+        bar_h(rx, 112, 190, 5, ram_pct,
+              cls.C_CYAN if ram_pct < 60 else cls.C_ORANGE if ram_pct < 85 else cls.C_RED)
+        txt(f"     {ram_pct:.1f}%",   rx, 128, cls.C_DIM,   0.38, 1)
+
+        res_str = f"RES  {w}x{h}"
+        txt(res_str, rx, 148, cls.C_DIM, 0.40, 1)
+
+        # ══ CENTER-TOP — crosshair + artificial horizon ═══════════════════════
+        cx, cy = w//2, h//2
+        arm = 18; gap = 6
+        col_ch = cls.C_GREEN
+        # crosshair
+        cv2.line(frame, (cx-arm-gap, cy), (cx-gap, cy), col_ch, 1)
+        cv2.line(frame, (cx+gap, cy), (cx+arm+gap, cy), col_ch, 1)
+        cv2.line(frame, (cx, cy-arm-gap), (cx, cy-gap), col_ch, 1)
+        cv2.line(frame, (cx, cy+gap), (cx, cy+arm+gap), col_ch, 1)
+        cv2.circle(frame, (cx, cy), 3, col_ch, -1)
+        cv2.circle(frame, (cx, cy), arm+gap+4, col_ch, 1)
+
+        # artificial horizon bar (static decoration)
+        blen = 80
+        cv2.line(frame, (cx-blen, cy-1), (cx-gap-4, cy-1), cls.C_YELLOW, 2)
+        cv2.line(frame, (cx+gap+4, cy-1), (cx+blen, cy-1), cls.C_YELLOW, 2)
+        txt("0°", cx+blen+4, cy+4, cls.C_YELLOW, 0.35, 1)
+
+        # frame corner brackets
+        brk = 20; bt = 2; bc = cls.C_GREEN
+        for (px,py,sx,sy) in [(0,0,1,1),(w,0,-1,1),(0,h,1,-1),(w,h,-1,-1)]:
+            cv2.line(frame,(px,py),(px+sx*brk,py),bc,bt)
+            cv2.line(frame,(px,py),(px,py+sy*brk),bc,bt)
+
+        # ══ BOTTOM-LEFT — hand fingertip coordinates ══════════════════════════
+        if all_tips:
+            hand_labels = ["L-HAND","R-HAND"]
+            base_y = h - 10 - len(all_tips) * 75
+            panel(4, base_y - 14, 220, h - 4)
+            cv2.rectangle(frame, (4, base_y-14), (220, h-4), cls.C_CYAN, 1)
+            for hi, tips in enumerate(all_tips):
+                label = hand_labels[hi] if hi < 2 else f"HAND{hi}"
+                txt(f"── {label} ──", 10, base_y + hi*75, cls.C_CYAN, 0.42, 1)
+                tip_indices = [4, 8, 12, 16, 20]
+                for fi, (tx, ty) in enumerate(tips):
+                    fname = cls.FINGER_LABELS.get(tip_indices[fi], f"F{fi}")
+                    col = cls.C_YELLOW if fi == 1 else cls.C_WHITE  # IDX highlight
+                    txt(f"  {fname}  X:{tx:4d}  Y:{ty:4d}",
+                        10, base_y + hi*75 + 14 + fi*12,
+                        col, 0.37, 1)
+
+        # ══ BOTTOM-CENTER — gesture legend ════════════════════════════════════
+        legend = [
+            ("PINCH",     "NEXT FILTER"),
+            ("✌  PEACE",  "BLUR FRAME"),
+            ("✊✊ 2-FIST", "TOGGLE MODE"),
+            ("N/P",       "FILTER STEP"),
+            ("F",         "FACE ON/OFF"),
+            ("C",         "MODE TOGGLE"),
+        ]
+        lw = 230; lh = len(legend)*14 + 10
+        lx = (w - lw) // 2; ly = h - lh - 6
+        panel(lx, ly, lx+lw, ly+lh)
+        cv2.rectangle(frame, (lx,ly), (lx+lw,ly+lh), cls.C_DIM, 1)
+        for i,(gesture,action) in enumerate(legend):
+            gy = ly + 12 + i*14
+            txt(f"{gesture:<12} {action}", lx+6, gy, cls.C_DIM, 0.35, 1)
+
+        # ══ SCAN LINE effect (subtle) ═════════════════════════════════════════
+        for y_sl in range(0, h, 6):
+            cv2.line(frame, (0, y_sl), (w, y_sl), (0,0,0), 1)
+        # blend scanlines lightly
+        ovl2 = frame.copy()
+        cv2.addWeighted(ovl2, 0.92, frame, 0.08, 0, frame)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -529,17 +708,14 @@ class PortalProcessor:
         if self.face_mode:
             frame, face_count = self.face_proc.apply(frame, self.filters[self.current_filter])
 
-        self._draw_hud(frame, is_bowtie, face_count)
+        self._draw_hud(frame, is_bowtie, face_count, all_tips, peace_count > 0, fist_count)
         # Watermark — selalu terakhir, di atas semua layer
         self.watermark_ui.draw(frame)
         return frame
 
-    def _draw_hud(self, frame, is_bowtie, face_count):
-        mode_str = "3D Mesh" if self.is_3d_mode else ("2D Bowtie" if is_bowtie else "2D Quad")
-        face_str = f"ON ({face_count})" if self.face_mode else "OFF"
-        cv2.putText(frame, f"MODE: {mode_str} [C / Dual Fist]", (15,25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,255), 2)
-        cv2.putText(frame, f"FILTER: {self.current_filter.upper()} [N/P/Pinch]", (15,50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 2)
-        cv2.putText(frame, f"FACE: {face_str} [F]", (15,75), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,220,255), 2)
+    def _draw_hud(self, frame, is_bowtie, face_count, all_tips=None, peace_active=False, fist_count=0):
+        FPVHud.draw(frame, self, is_bowtie, face_count,
+                    all_tips or [], peace_active, fist_count)
 
     def close(self):
         self.face_proc.close()
