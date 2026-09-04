@@ -720,7 +720,7 @@ class FaceFilterProcessor:
             static_image_mode=False, max_num_faces=2, refine_landmarks=True,
             min_detection_confidence=0.7, min_tracking_confidence=0.6)
 
-    def apply(self, frame, filter_fn):
+    def apply(self, frame, filter_fn, show_lines: bool = True):
         global _active_emoji_idx
         h, w = frame.shape[:2]
         results = self.detector.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -741,7 +741,7 @@ class FaceFilterProcessor:
             mask = cv2.GaussianBlur(mask, (15,15), 0)
             m = cv2.merge([mask,mask,mask]).astype(np.float32)/255.0
             frame[y:y+bh, x:x+bw] = (filtered*m + roi*(1-m)).astype(np.uint8)
-            cv2.polylines(frame, [oval_pts], True, (0,220,255), 1)
+            cv2.polylines(frame, [oval_pts], True, (0,220,255), 1) if show_lines else None
 
         return frame, face_count
 
@@ -829,7 +829,7 @@ class FPVHud:
         # Layout: 4 baris — Hand On/Off, Hand Filter mode+pilih,
         #                    Face On/Off, Face Filter mode+pilih
         cp_x1, cp_y1 = 4, 136
-        cp_x2, cp_y2 = 310, 410
+        cp_x2, cp_y2 = 310, 460
         panel(cp_x1, cp_y1, cp_x2, cp_y2, 0.45)
         cv2.rectangle(frame, (cp_x1, cp_y1), (cp_x2, cp_y2), (180, 100, 255), 1)
         cv2.putText(frame, "CONTROL PANEL", (cp_x1+10, cp_y1+16),
@@ -960,6 +960,31 @@ class FPVHud:
             cv2.circle(frame, (dx, dot_y), r, col, -1)
             if is_active:
                 cv2.circle(frame, (dx, dot_y), r+1, (200,200,0), 1)
+
+        # ── separator 3 ───────────────────────────────────────────────────────
+        sep3_y = dot_y + 12
+        cv2.line(frame, (cp_x1+6, sep3_y), (cp_x2-6, sep3_y), (80,80,80), 1)
+
+        # ── baris 6: LINES TRACKING ───────────────────────────────────────────
+        r6y1, r6y2 = sep3_y + 4, sep3_y + 28
+        cv2.putText(frame, "GARIS TRACKING:", (cp_x1+10, r6y1+16),
+                    cls.FONT, 0.40, cls.C_WHITE, 1, cv2.LINE_AA)
+
+        # HAND LINES on/off
+        hlon_x1, hlon_x2 = cp_x1+148, cp_x1+184
+        hlof_x1, hlof_x2 = cp_x1+186, cp_x1+226
+        cv2.putText(frame, "H:", (cp_x1+136, r6y2-6), cls.FONT, 0.36, cls.C_TEAL, 1, cv2.LINE_AA)
+        cp_btn("ON",  hlon_x1, r6y1, hlon_x2, r6y2, proc.show_hand_lines,      (0,130,50))
+        cp_btn("OFF", hlof_x1, r6y1, hlof_x2, r6y2, not proc.show_hand_lines,  (120,30,30))
+        proc._cp_hline_rect = (hlon_x1, r6y1, hlof_x2, r6y2)
+
+        # FACE LINES on/off
+        flon_x1, flon_x2 = cp_x2-86, cp_x2-50
+        flof_x1, flof_x2 = cp_x2-48, cp_x2-8
+        cv2.putText(frame, "F:", (cp_x2-100, r6y2-6), cls.FONT, 0.36, cls.C_TEAL, 1, cv2.LINE_AA)
+        cp_btn("ON",  flon_x1, r6y1, flon_x2, r6y2, proc.show_face_lines,      (0,130,50))
+        cp_btn("OFF", flof_x1, r6y1, flof_x2, r6y2, not proc.show_face_lines,  (120,30,30))
+        proc._cp_fline_rect = (flon_x1, r6y1, flof_x2, r6y2)
 
         # ══ TOP-RIGHT
         panel(w-220, 4, w-4, 155)
@@ -1099,7 +1124,18 @@ class PortalProcessor:
         self._cp_face_prev_rect     = (0,0,0,0)
         self._cp_face_next_rect     = (0,0,0,0)
 
-        # ── Background replacement ────────────────────────────────────────────
+        # ── Tampilan garis tracking ───────────────────────────────────────────
+        self.show_hand_lines = True   # gambar landmark skeleton tangan
+        self.show_face_lines = True   # gambar oval outline wajah
+        self._cp_hline_rect  = (0,0,0,0)
+        self._cp_fline_rect  = (0,0,0,0)
+
+        # ── Video Recorder ────────────────────────────────────────────────────
+        self.is_recording    = False
+        self._video_writer:  Optional[cv2.VideoWriter] = None
+        self._rec_filename   = ""
+        self._rec_start_t    = 0.0
+        self._rec_btn_rect   = (0,0,0,0)   # diisi saat draw HUD
         # Pilihan background: nama → solid BGR atau callable(h,w)→frame
         self.bg_options = [
             {"name": "NORMAL",   "value": None},
@@ -1188,7 +1224,8 @@ class PortalProcessor:
         m3   = cv2.merge([mask,mask,mask])
         frame[y:y+h, x:x+w] = cv2.add(cv2.bitwise_and(roi, cv2.bitwise_not(m3)),
                                         cv2.bitwise_and(proc, m3))
-        cv2.polylines(frame, [poly], True, (255,255,255), 2)
+        if self.show_hand_lines:
+            cv2.polylines(frame, [poly], True, (255,255,255), 2)
         return frame
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
@@ -1226,7 +1263,8 @@ class PortalProcessor:
 
         if results.multi_hand_landmarks and self.hand_tracking:
             for hand_lm in results.multi_hand_landmarks:
-                self.mp_draw.draw_landmarks(frame, hand_lm, self.mp_hands.HAND_CONNECTIONS)
+                if self.show_hand_lines:
+                    self.mp_draw.draw_landmarks(frame, hand_lm, self.mp_hands.HAND_CONNECTIONS)
                 lm   = hand_lm.landmark
                 tips = [(int(lm[i].x*self.cfg.frame_width), int(lm[i].y*self.cfg.frame_height)) for i in [4,8,12,16,20]]
                 all_tips.append(tips)
@@ -1375,11 +1413,16 @@ class PortalProcessor:
 
         face_count = 0
         if self.face_mode:
-            frame, face_count = self.face_proc.apply(frame, self.filters[self.face_current_filter])
+            frame, face_count = self.face_proc.apply(frame, self.filters[self.face_current_filter], self.show_face_lines)
 
         self._draw_hud(frame, is_bowtie, face_count, all_tips, peace_count > 0, fist_count)
         self.watermark_ui.draw(frame)
         self.photo_cap.draw(frame)
+        self._draw_rec_btn(frame)
+
+        # ── Tulis frame ke video jika sedang recording ─────────────────────────
+        if self.is_recording and self._video_writer is not None:
+            self._video_writer.write(frame)
 
         return frame
 
@@ -1395,7 +1438,60 @@ class PortalProcessor:
         cv2.putText(frame, "EXIT", (ex1 + 8, ey2 - 7),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 255), 1, cv2.LINE_AA)
 
+    def _draw_rec_btn(self, frame: np.ndarray) -> None:
+        """Tombol REC di sebelah kanan tombol kamera (bottom-center)."""
+        fw, fh = self.cfg.frame_width, self.cfg.frame_height
+        btn_cx_cam = fw // 2
+        btn_cy     = fh - 24 - 12
+
+        rx = btn_cx_cam + 70
+        rw, rh = 56, 32
+        rx1, ry1 = rx, btn_cy - rh // 2
+        rx2, ry2 = rx + rw, btn_cy + rh // 2
+        self._rec_btn_rect = (rx1, ry1, rx2, ry2)
+
+        now    = time.time()
+        is_rec = self.is_recording
+        bg_col = (0, 0, 180) if is_rec else (50, 50, 50)
+        bd_col = (0, 0, 255) if is_rec else (140, 140, 140)
+
+        ovl = frame.copy()
+        cv2.rectangle(ovl, (rx1, ry1), (rx2, ry2), bg_col, -1)
+        cv2.addWeighted(ovl, 0.80, frame, 0.20, 0, frame)
+        cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), bd_col, 1)
+
+        if is_rec:
+            blink = int(now * 2) % 2 == 0
+            if blink:
+                cv2.circle(frame, (rx1+10, (ry1+ry2)//2), 5, (0, 0, 255), -1)
+            elapsed = now - self._rec_start_t
+            m, s = int(elapsed) // 60, int(elapsed) % 60
+            cv2.putText(frame, f"{m:02d}:{s:02d}", (rx1+18, ry2-7),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.40, (255,255,255), 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "REC", (rx1+12, ry2-8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.44, (200,200,200), 1, cv2.LINE_AA)
+
+    def start_recording(self) -> None:
+        ts     = int(time.time())
+        fn     = f"video_{ts}.mp4"
+        fw, fh = self.cfg.frame_width, self.cfg.frame_height
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        self._video_writer = cv2.VideoWriter(fn, fourcc, 25.0, (fw, fh))
+        self._rec_filename  = fn
+        self._rec_start_t   = time.time()
+        self.is_recording   = True
+        print(f"[REC] Mulai rekam: {fn}")
+
+    def stop_recording(self) -> None:
+        if self._video_writer is not None:
+            self._video_writer.release()
+            self._video_writer = None
+        self.is_recording = False
+        print(f"[REC] Selesai: {self._rec_filename}")
+
     def close(self):
+        self.stop_recording()
         self.face_proc.close()
         self.detector.close()
         if self._seg_model is not None:
@@ -1684,8 +1780,30 @@ def _on_mouse(event, x, y, flags, param):
                     p.face_filter_idx = (p.face_filter_idx + 1) % len(p.filter_keys)
                     return
 
-            # ── Control Panel: BACKGROUND prev/next ───────────────────────────
-            bgpx1, bgpy1, bgpx2, bgpy2 = p._cp_bg_prev_rect
+            # ── Control Panel: GARIS HAND on/off ─────────────────────────────
+            hlx1, hly1, hlx2, hly2 = p._cp_hline_rect
+            if hlx1 <= x <= hlx2 and hly1 <= y <= hly2:
+                mid = (hlx1 + hlx2) // 2
+                p.show_hand_lines = (x <= mid)
+                return
+
+            # ── Control Panel: GARIS FACE on/off ─────────────────────────────
+            flx1, fly1, flx2, fly2 = p._cp_fline_rect
+            if flx1 <= x <= flx2 and fly1 <= y <= fly2:
+                mid = (flx1 + flx2) // 2
+                p.show_face_lines = (x <= mid)
+                return
+
+            # ── Tombol REC ────────────────────────────────────────────────────
+            rx1, ry1, rx2, ry2 = p._rec_btn_rect
+            if rx1 <= x <= rx2 and ry1 <= y <= ry2:
+                if p.is_recording:
+                    p.stop_recording()
+                else:
+                    p.start_recording()
+                return
+
+            # Cek watermark dulu
             bgnx1, bgny1, bgnx2, bgny2 = p._cp_bg_next_rect
             if bgpx1 <= x <= bgpx2 and bgpy1 <= y <= bgpy2:
                 p.bg_idx = (p.bg_idx - 1) % len(p.bg_options)
