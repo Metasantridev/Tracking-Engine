@@ -217,16 +217,16 @@ class PhotoCapture:
     # ── public ────────────────────────────────────────────────────────────────
 
     def trigger_capture(self, frame: np.ndarray) -> None:
-        """Simpan foto (hasil layar dengan overlay) — tidak ada popup palsu."""
+        """Simpan foto dan tampilkan prank popup."""
         ts = int(time.time())
         fn = f"photo_{ts}.png"
         cv2.imwrite(fn, frame)
         self.last_photo    = frame.copy()
         self.last_filename = fn
         self.thumb_img     = cv2.resize(frame, (self.THUMB_W, self.THUMB_H))
-        # Toast simpel
-        self.prank_msg   = f"Foto disimpan: {fn}"
-        self.prank_until = time.time() + 2.5
+        # Prank popup
+        self.prank_msg   = "Berhasil mengambil Rp74.900 saldo dari rekening anda!"
+        self.prank_until = time.time() + 4.0
         print(f"[SNAP] Foto disimpan: {fn}")
 
     def handle_click(self, mx: int, my: int) -> bool:
@@ -250,49 +250,61 @@ class PhotoCapture:
         return False
 
     def draw(self, frame: np.ndarray) -> np.ndarray:
-        """Gambar tombol gallery (hanya jika ada foto), preview, dan toast."""
+        """Gambar tombol kamera, thumbnail, preview, dan prank toast."""
         if self.show_preview and self.last_photo is not None:
             self._draw_preview(frame)
         else:
-            # Tombol kamera tetap ada tapi tersembunyi (invisible) — trigger via klik
-            self._draw_camera_btn_invisible(frame)
-            # Tombol GALLERY hanya muncul kalau sudah ada foto
-            if self.thumb_img is not None:
-                self._draw_gallery_btn(frame)
+            self._draw_camera_btn(frame)
+            self._draw_thumbnail(frame)
         self._draw_prank(frame)
         return frame
 
-    # ── kamera button (invisible — hanya area klik, tidak digambar) ──────────
+    # ── kamera button ─────────────────────────────────────────────────────────
 
-    def _draw_camera_btn_invisible(self, frame: np.ndarray) -> None:
-        """Tombol capture tidak digambar — area klik tetap aktif di btn_rect."""
-        pass   # Tidak render apa-apa; btn_rect tetap bisa diklik
+    def _draw_camera_btn(self, frame: np.ndarray) -> None:
+        x1, y1, x2, y2 = self.btn_rect
+        cx, cy = self.btn_cx, self.btn_cy
 
-    def _draw_gallery_btn(self, frame: np.ndarray) -> None:
-        """Tombol GALLERY — muncul di bawah kanan, hanya ada foto yang bisa dilihat."""
-        tw, th = self.THUMB_W + 20, self.THUMB_H + 24
-        tx1 = self.fw - tw - 12
-        ty1 = self.fh - th - 12
-        tx2 = tx1 + tw
-        ty2 = ty1 + th
-        self.thumb_rect = (tx1, ty1, tx2, ty2)
+        # Background lingkaran
+        cv2.circle(frame, (cx, cy), self.BTN_SIZE // 2, (40, 40, 40), -1)
+        cv2.circle(frame, (cx, cy), self.BTN_SIZE // 2, (200, 200, 200), 2)
 
-        # Background panel
-        ovl = frame.copy()
-        cv2.rectangle(ovl, (tx1-2, ty1-2), (tx2+2, ty2+2), (0, 0, 0), -1)
-        cv2.addWeighted(ovl, 0.5, frame, 0.5, 0, frame)
+        # Ikon kamera — body
+        bw, bh = 26, 18
+        bx1 = cx - bw // 2
+        by1 = cy - bh // 2
+        bx2 = bx1 + bw
+        by2 = by1 + bh
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (220, 220, 220), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (80, 80, 80), 1)
 
-        # Thumbnail image
-        thumb_x1 = tx1 + 10
-        thumb_y1 = ty1 + 6
-        thumb_x2 = thumb_x1 + self.THUMB_W
-        thumb_y2 = thumb_y1 + self.THUMB_H
-        frame[thumb_y1:thumb_y2, thumb_x1:thumb_x2] = self.thumb_img
-        cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (0, 200, 255), 1)
-        cv2.putText(frame, "LIHAT", (tx1 + 6, ty2 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.30, (0, 200, 255), 1, cv2.LINE_AA)
+        # Tonjolan atas (viewfinder bump)
+        cv2.rectangle(frame, (cx-6, by1-5), (cx+6, by1), (220, 220, 220), -1)
 
-    # ── thumbnail (tidak digunakan langsung — lihat _draw_gallery_btn) ────────
+        # Lensa
+        cv2.circle(frame, (cx, cy), 6, (60, 60, 60), -1)
+        cv2.circle(frame, (cx, cy), 6, (180, 180, 180), 1)
+        cv2.circle(frame, (cx-2, cy-2), 2, (255, 255, 255), -1)   # kilap
+
+        # Flash dot kiri atas
+        cv2.circle(frame, (bx1+4, by1+4), 2, (255, 220, 50), -1)
+
+    # ── thumbnail ─────────────────────────────────────────────────────────────
+
+    def _draw_thumbnail(self, frame: np.ndarray) -> None:
+        tx1, ty1, tx2, ty2 = self.thumb_rect
+        if self.thumb_img is not None:
+            frame[ty1:ty2, tx1:tx2] = self.thumb_img
+            cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (0, 220, 255), 1)
+            # Label kecil
+            cv2.putText(frame, "TAP", (tx1+2, ty2-3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.28, (0, 220, 255), 1, cv2.LINE_AA)
+        else:
+            # Placeholder kosong
+            cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (60, 60, 60), -1)
+            cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (100, 100, 100), 1)
+            cv2.putText(frame, "?", (tx1 + self.THUMB_W//2 - 5, ty1 + self.THUMB_H//2 + 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1, cv2.LINE_AA)
 
     # ── preview fullscreen ────────────────────────────────────────────────────
 
@@ -358,25 +370,45 @@ class PhotoCapture:
             return False
         return False
 
-    # ── toast notifikasi ──────────────────────────────────────────────────────
+    # ── prank toast ───────────────────────────────────────────────────────────
 
     def _draw_prank(self, frame: np.ndarray) -> None:
         if not self.prank_msg or time.time() > self.prank_until:
             self.prank_msg = ""
             return
 
+        lines = self.prank_msg.split("\n")
         font  = cv2.FONT_HERSHEY_SIMPLEX
-        scale = 0.52
-        thick = 1
-        (tw, th), _ = cv2.getTextSize(self.prank_msg, font, scale, thick)
-        tx = (self.fw - tw) // 2
-        ty = self.fh - 70
-        ovl = frame.copy()
-        cv2.rectangle(ovl, (tx-14, ty-20), (tx+tw+14, ty+8), (15, 15, 15), -1)
-        cv2.addWeighted(ovl, 0.75, frame, 0.25, 0, frame)
-        cv2.rectangle(frame, (tx-14, ty-20), (tx+tw+14, ty+8), (0, 200, 120), 1)
-        cv2.putText(frame, self.prank_msg, (tx, ty),
-                    font, scale, (0, 220, 140), thick, cv2.LINE_AA)
+        scale = 0.65
+        thick = 2
+        padding = 18
+        line_h  = 34
+
+        max_w = max(cv2.getTextSize(l, font, scale, thick)[0][0] for l in lines)
+        total_h = len(lines) * line_h + padding
+
+        bx1 = (self.fw - max_w) // 2 - padding
+        by1 = self.fh // 2 - total_h // 2
+        bx2 = bx1 + max_w + padding * 2
+        by2 = by1 + total_h + padding
+
+        # Panel
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (bx1-4, by1-4), (bx2+4, by2+4), (0, 0, 200), -1)
+        cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (30, 30, 180), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (100, 100, 255), 2)
+
+        # Ikon warning
+        cv2.putText(frame, "! PERINGATAN !", (bx1+padding, by1+24),
+                    font, 0.55, (255, 255, 50), 2, cv2.LINE_AA)
+        cv2.line(frame, (bx1, by1+32), (bx2, by1+32), (80, 80, 200), 1)
+
+        for i, line in enumerate(lines):
+            (tw, _), _ = cv2.getTextSize(line, font, scale, thick)
+            tx = (self.fw - tw) // 2
+            ty = by1 + 52 + i * line_h
+            cv2.putText(frame, line, (tx, ty), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -631,7 +663,13 @@ class FaceFilterProcessor:
             m = cv2.merge([mask,mask,mask]).astype(np.float32)/255.0
             frame[y:y+bh, x:x+bw] = (filtered*m + roi*(1-m)).astype(np.uint8)
             cv2.polylines(frame, [oval_pts], True, (0,220,255), 1)
-            # Emoji dihapus per request
+
+            # Emoji di atas kepala
+            head_x = int(face_lm.landmark[10].x * w)
+            head_y = int(face_lm.landmark[10].y * h)
+            emoji  = FACE_EMOJIS[_active_emoji_idx % len(FACE_EMOJIS)]
+            emoji_size = max(32, bw // 2)
+            _draw_emoji_on_frame(frame, head_x, head_y, emoji_size, emoji)
 
         return frame, face_count
 
@@ -667,15 +705,6 @@ class FPVHud:
         h, w = frame.shape[:2]
         now  = time.time()
 
-        # ══ TOMBOL EXIT (klik untuk keluar) — top-right paling ujung
-        ex1, ey1, ex2, ey2 = proc._exit_btn_rect
-        ovl_e = frame.copy()
-        cv2.rectangle(ovl_e, (ex1, ey1), (ex2, ey2), (40, 30, 30), -1)
-        cv2.addWeighted(ovl_e, 0.8, frame, 0.2, 0, frame)
-        cv2.rectangle(frame, (ex1, ey1), (ex2, ey2), (60, 60, 200), 1)
-        cv2.putText(frame, "EXIT", (ex1+8, ey2-7),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 255), 1, cv2.LINE_AA)
-
         if cls._last_ts:
             cls._fps_buf.append(1.0 / max(now - cls._last_ts, 1e-6))
             if len(cls._fps_buf) > 30: cls._fps_buf.pop(0)
@@ -707,41 +736,36 @@ class FPVHud:
             cv2.rectangle(frame, (x, y), (x+bw, y+bh), cls.C_DIM, 1)
 
         # ══ TOP-LEFT
-        panel(4, 4, 320, 135)
-        cv2.rectangle(frame, (4,4), (320,135), cls.C_CYAN, 1)
+        panel(4, 4, 310, 115)
+        cv2.rectangle(frame, (4,4), (310,115), cls.C_CYAN, 1)
         mode_str  = "3D-MESH" if proc.is_3d_mode else ("2D-BOWTIE" if is_bowtie else "2D-QUAD")
         face_str  = f"FACE {face_count}" if proc.face_mode else "FACE OFF"
         txt(f"MODE   {mode_str}",          14, 24,  cls.C_CYAN,   0.50, 1)
         txt(f"FILTER {proc.current_filter.upper()}", 14, 44, cls.C_WHITE, 0.50, 1)
         txt(f"HANDS  {len(all_tips)}  |  {face_str}", 14, 64, cls.C_TEAL,  0.45, 1)
         gestures = []
-        if peace_active:       gestures.append("V-BLUR")
-        if fist_count == 2:    gestures.append("FIST×2 MODE")
+        if peace_active:       gestures.append("V BLUR")
+        if fist_count == 2:    gestures.append("FIST2 MODE")
         if fist_count == 1:    gestures.append("FIST")
-        g_str = "  ".join(gestures) if gestures else "NONE"
+        g_str = "  ".join(gestures) if gestures else "-"
         txt(f"GESTURE {g_str}", 14, 84, cls.C_ORANGE, 0.45, 1)
         txt(f"NEXT   {proc.secondary_filter.upper()}", 14, 104, cls.C_DIM, 0.40, 1)
-        # Warna tracking aktif — tampilkan sebagai dot berwarna
-        tc = proc.tracking_color
-        cv2.circle(frame, (14+5, 120), 5, tc, -1)
-        next_sec = max(0, 3.0 - (now - proc._last_color_time))
-        txt(f"  COLOR AUTO  next:{next_sec:.1f}s", 14, 124, tc, 0.38, 1)
 
-        # ══ TOP-RIGHT (geser ke kiri supaya tidak nabrak tombol EXIT)
-        panel(w-220, 34, w-4, 175)
-        cv2.rectangle(frame, (w-220,34), (w-4,175), cls.C_GREEN, 1)
+        # ══ TOP-RIGHT
+        panel(w-220, 4, w-4, 155)
+        cv2.rectangle(frame, (w-220,4), (w-4,155), cls.C_GREEN, 1)
         rx = w - 210
-        txt(f"{ts_str}  {date_str}",  rx, 52,  cls.C_YELLOW, 0.48, 1)
-        txt(f"FPS  {fps:5.1f}",       rx, 70,  cls.C_GREEN,  0.48, 1)
-        txt(f"OS   {os_str}",         rx, 88,  cls.C_WHITE,  0.45, 1)
-        txt(f"CPU  {cpu_pct:4.1f}%",  rx, 106, cls.C_WHITE,  0.45, 1)
-        bar_h(rx, 112, 190, 5, cpu_pct,
+        txt(f"{ts_str}  {date_str}",  rx, 22,  cls.C_YELLOW, 0.48, 1)
+        txt(f"FPS  {fps:5.1f}",       rx, 42,  cls.C_GREEN,  0.48, 1)
+        txt(f"OS   {os_str}",         rx, 62,  cls.C_WHITE,  0.45, 1)
+        txt(f"CPU  {cpu_pct:4.1f}%",  rx, 80,  cls.C_WHITE,  0.45, 1)
+        bar_h(rx, 86, 190, 5, cpu_pct,
               cls.C_GREEN if cpu_pct < 60 else cls.C_ORANGE if cpu_pct < 85 else cls.C_RED)
-        txt(f"RAM  {ram_used:.0f}/{ram_tot:.0f} MB", rx, 132, cls.C_WHITE, 0.45, 1)
-        bar_h(rx, 138, 190, 5, ram_pct,
+        txt(f"RAM  {ram_used:.0f}/{ram_tot:.0f} MB", rx, 106, cls.C_WHITE, 0.45, 1)
+        bar_h(rx, 112, 190, 5, ram_pct,
               cls.C_CYAN if ram_pct < 60 else cls.C_ORANGE if ram_pct < 85 else cls.C_RED)
-        txt(f"     {ram_pct:.1f}%",   rx, 154, cls.C_DIM,   0.38, 1)
-        txt(f"RES  {w}x{h}", rx, 170, cls.C_DIM, 0.40, 1)
+        txt(f"     {ram_pct:.1f}%",   rx, 128, cls.C_DIM,   0.38, 1)
+        txt(f"RES  {w}x{h}", rx, 148, cls.C_DIM, 0.40, 1)
 
         # ══ CENTER crosshair
         cx, cy = w//2, h//2
@@ -782,24 +806,21 @@ class FPVHud:
         # ══ BOTTOM-CENTER legend (NOTE: tombol kamera digambar oleh PhotoCapture,
         #    jadi legend kita geser sedikit ke atas agar tidak nabrak)
         legend = [
-            ("PINCH",    "NEXT FILTER"),
-            ("V PEACE",  "BLUR FRAME"),
-            ("FIST x2",  "TOGGLE MODE"),
-            ("THUMB UP", "BLUR + NAMA"),
-            ("N / P",    "FILTER STEP"),
-            ("F",        "FACE ON/OFF"),
-            ("C",        "TOGGLE 3D"),
-            ("KLIK [LIHAT]", "FOTO PREVIEW"),
-            ("Q / EXIT BTN", "KELUAR"),
+            ("PINCH",     "NEXT FILTER"),
+            ("V PEACE",   "BLUR FRAME"),
+            ("FIST x2",   "TOGGLE MODE"),
+            ("THUMB UP",  "POPUP NAME"),
+            ("N/P",       "FILTER STEP"),
+            ("F",         "FACE ON/OFF"),
         ]
-        lw = 250; lh = len(legend)*13 + 14
-        lx = (w - lw) // 2
-        ly = h - lh - 14
+        lw = 230; lh = len(legend)*14 + 10
+        lx = (w - lw) // 2 + 90   # geser kanan supaya tidak nabrak thumbnail+kamera
+        ly = h - lh - 75
         panel(lx, ly, lx+lw, ly+lh)
         cv2.rectangle(frame, (lx,ly), (lx+lw,ly+lh), cls.C_DIM, 1)
         for i,(gesture,action) in enumerate(legend):
-            gy = ly + 13 + i*13
-            txt(f"{gesture:<14} {action}", lx+6, gy, cls.C_DIM, 0.33, 1)
+            gy = ly + 12 + i*14
+            txt(f"{gesture:<12} {action}", lx+6, gy, cls.C_DIM, 0.35, 1)
 
         # ══ SCAN LINE
         for y_sl in range(0, h, 6):
@@ -854,46 +875,16 @@ class PortalProcessor:
         self.mp_hands  = mp.solutions.hands
         self.mp_draw   = mp.solutions.drawing_utils
         self.detector  = self.mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,
-            model_complexity=1,
-            min_detection_confidence=0.85,   # lebih ketat — lebih akurat
-            min_tracking_confidence=0.85)    # lebih stabil tracking 2 tangan
+            static_image_mode=False, max_num_hands=2, model_complexity=1,
+            min_detection_confidence=0.8, min_tracking_confidence=0.8)
 
         self.face_proc    = FaceFilterProcessor(cfg)
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
         self.photo_cap    = PhotoCapture(cfg.frame_width, cfg.frame_height)
 
-        # Flag jempol
+        # Flag jempol untuk animasi close
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
-
-        # Tombol EXIT di HUD (klik untuk keluar)
-        self._exit_requested  = False
-        self._exit_btn_rect   = (cfg.frame_width - 70, 4, cfg.frame_width - 4, 30)
-
-        # Auto-cycle warna tracking tiap 3 detik
-        self._color_palette = [
-            (0,  255, 120),   # hijau
-            (0,  200, 255),   # cyan
-            (255, 80,  80),   # merah
-            (255, 200,  0),   # kuning
-            (180,  80, 255),  # ungu
-            (0,  255, 200),   # teal
-            (255, 140,  0),   # oranye
-            (120, 255, 80),   # lime
-        ]
-        self._color_idx       = 0
-        self._last_color_time = time.time()
-
-    @property
-    def tracking_color(self) -> tuple:
-        """Warna tracking aktif — auto-cycle tiap 3 detik."""
-        now = time.time()
-        if now - self._last_color_time >= 3.0:
-            self._color_idx       = (self._color_idx + 1) % len(self._color_palette)
-            self._last_color_time = now
-        return self._color_palette[self._color_idx]
 
     @property
     def current_filter(self): return self.filter_keys[self.active_filter_idx]
@@ -916,7 +907,7 @@ class PortalProcessor:
         m3   = cv2.merge([mask,mask,mask])
         frame[y:y+h, x:x+w] = cv2.add(cv2.bitwise_and(roi, cv2.bitwise_not(m3)),
                                         cv2.bitwise_and(proc, m3))
-        cv2.polylines(frame, [poly], True, self.tracking_color, 2)
+        cv2.polylines(frame, [poly], True, (255,255,255), 2)
         return frame
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
@@ -934,12 +925,8 @@ class PortalProcessor:
         thumbsup    = False
 
         if results.multi_hand_landmarks:
-            tc = self.tracking_color   # warna auto-cycle
-            dot_spec  = self.mp_draw.DrawingSpec(color=tc, thickness=2, circle_radius=3)
-            line_spec = self.mp_draw.DrawingSpec(color=tc, thickness=2)
             for hand_lm in results.multi_hand_landmarks:
-                self.mp_draw.draw_landmarks(frame, hand_lm, self.mp_hands.HAND_CONNECTIONS,
-                                            dot_spec, line_spec)
+                self.mp_draw.draw_landmarks(frame, hand_lm, self.mp_hands.HAND_CONNECTIONS)
                 lm   = hand_lm.landmark
                 tips = [(int(lm[i].x*self.cfg.frame_width), int(lm[i].y*self.cfg.frame_height)) for i in [4,8,12,16,20]]
                 all_tips.append(tips)
@@ -984,27 +971,27 @@ class PortalProcessor:
             cv2.putText(frame, "V BLUR MODE", (15, 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 180), 2, cv2.LINE_AA)
 
-        # ── 👍 Thumbs Up → blur background + teks "Mas Faisal Ganteng" ──────
+        # ── 👍 Thumbs Up → popup toast "Mas Faisal Ganteng" ──────────────────
         if thumbsup:
             if not self._thumbsup_triggered:
                 self._thumbsup_triggered   = True
                 self._thumbsup_frame_start = now
-            elapsed   = now - self._thumbsup_frame_start
-            # Blur seluruh background
-            blurred   = cv2.GaussianBlur(frame, (45, 45), 0)
-            frame[:] = blurred
-            # Teks di tengah
-            name_text = "Mas Faisal Ganteng"
-            font      = cv2.FONT_HERSHEY_SIMPLEX
-            scale     = 1.6; thick = 3
+                # Tampilkan toast via photo_cap (pakai sistem prank-nya)
+                self.photo_cap.prank_msg   = "Mas Faisal Ganteng  😎👍"
+                self.photo_cap.prank_until = now + 3.0
+            # Nama besar di tengah selama gesture aktif
+            name_text = "Mas Faisal Ganteng :D"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 1.4; thick = 3
             fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
+            elapsed = now - self._thumbsup_frame_start
             (tw, th), _ = cv2.getTextSize(name_text, font, scale, thick)
             tx = (fw_f - tw) // 2
             ty = fh_f // 2 + th // 2
-            # Shadow
-            cv2.putText(frame, name_text, (tx+3, ty+3), font, scale, (0, 0, 0), thick+3, cv2.LINE_AA)
-            # Teks putih solid — tidak berubah warna
-            cv2.putText(frame, name_text, (tx, ty), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
+            cv2.putText(frame, name_text, (tx+3, ty+3), font, scale, (0,0,0), thick+2, cv2.LINE_AA)
+            r = int(abs(np.sin(elapsed * 3)) * 255)
+            g = int(abs(np.cos(elapsed * 2)) * 200)
+            cv2.putText(frame, name_text, (tx, ty), font, scale, (r, g, 255), thick, cv2.LINE_AA)
         else:
             self._thumbsup_triggered = False
 
@@ -1038,11 +1025,6 @@ def _on_mouse(event, x, y, flags, param):
     global _pending_capture
     if event == cv2.EVENT_LBUTTONDOWN:
         if _processor_ref:
-            # Cek tombol EXIT
-            ex1, ey1, ex2, ey2 = _processor_ref._exit_btn_rect
-            if ex1 <= x <= ex2 and ey1 <= y <= ey2:
-                _processor_ref._exit_requested = True
-                return
             # Cek watermark dulu
             _processor_ref.watermark_ui.handle_click(x, y)
             # Cek photo capture
@@ -1080,17 +1062,15 @@ def main():
         ret, frame = cap.read()
         if not ret: break
 
-        out = processor.process_frame(frame)
-
-        # Capture SETELAH process_frame → foto = hasil layar dengan overlay
+        # Capture foto jika tombol kamera diklik
         if _pending_capture:
             _pending_capture = False
-            processor.photo_cap.trigger_capture(out.copy())
+            processor.photo_cap.trigger_capture(
+                cv2.resize(cv2.flip(frame, 1), (cfg.frame_width, cfg.frame_height))
+            )
 
+        out = processor.process_frame(frame)
         cv2.imshow(win, out)
-
-        if processor._exit_requested:
-            break
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
