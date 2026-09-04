@@ -417,6 +417,110 @@ class ThumbsUpChecker:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SARANGEO (ILY 🤟) GESTURE DETECTOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+SARANGEO_QUOTES = [
+    "Saranghae~ 💕",
+    "I love you to the moon and back 🌙",
+    "Cinta itu buta, tapi hati yang melihat ❤️",
+    "Kamu bintang di langit malamku ✨",
+    "Stay in love, stay alive 💖",
+    "Love is the answer 🌸",
+    "Hatiku milikmu selamanya 💗",
+    "사랑해요~ (Saranghaeyo) 🥰",
+    "You make my heart go boom 💓",
+    "Dimana kamu, di situ hatiku 🫀",
+    "Love without limits 💝",
+    "Kamu adalah alasan senyumku 😊",
+    "세상에서 제일 사랑해 (Cinta terbesar di dunia) ❤️",
+    "My heart beats only for you 💞",
+    "Jangan pergi, aku butuh kamu 🥺",
+]
+
+
+class SarangeoChecker:
+    """
+    Deteksi gesture 🤟 ILY / Sarangeo:
+    - Ibu jari (4) naik
+    - Telunjuk (8) naik
+    - Kelingking (20) naik
+    - Jari tengah (12) & manis (16) menekuk
+    """
+
+    @staticmethod
+    def is_sarangeo(landmarks) -> bool:
+        lm = landmarks
+
+        # Ibu jari tegak
+        thumb_up = lm[4].y < lm[3].y - 0.03
+
+        # Telunjuk tegak
+        index_up = lm[8].y < lm[6].y - 0.03
+
+        # Kelingking tegak
+        pinky_up = lm[20].y < lm[18].y - 0.03
+
+        # Jari tengah & manis menekuk
+        middle_curled = lm[12].y > lm[10].y + 0.02
+        ring_curled   = lm[16].y > lm[14].y + 0.02
+
+        return thumb_up and index_up and pinky_up and middle_curled and ring_curled
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CROSSED FINGERS 🤞 GESTURE DETECTOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+CROSSED_QUOTES = [
+    "Semoga berhasil! 🤞",
+    "Good luck, you got this! 🍀",
+    "Bismillah, pasti bisa! 💪",
+    "Fingers crossed for you~ 🤞",
+    "Doa terbaik selalu menyertaimu ✨",
+    "Yakin bisa, jangan menyerah! 🔥",
+    "The universe is on your side 🌌",
+    "Semesta mendukungmu hari ini 🌟",
+    "Harapan itu nyata, terus percaya! 💫",
+    "Lucky vibes loading... 99% ✅",
+    "Keep going, rezekimu sudah ditentukan 🙏",
+    "Manifest it and it will come 🌈",
+    "Sukses itu dekat, jangan berhenti! 🏁",
+    "Allah selalu bersama orang yang sabar 🤲",
+    "Insha Allah, semua akan indah pada waktunya 🌸",
+]
+
+
+class CrossedFingersChecker:
+    """
+    Deteksi gesture 🤞 crossed fingers:
+    - Telunjuk (8) dan jari tengah (12) keduanya naik
+    - Tip telunjuk dan tengah saling dekat (bersilang)
+    - Jari manis (16) dan kelingking (20) menekuk
+    - Ibu jari boleh bebas
+    """
+
+    @staticmethod
+    def is_crossed(landmarks, frame_w: int, frame_h: int) -> bool:
+        lm = landmarks
+
+        # Telunjuk & tengah tegak
+        index_up  = lm[8].y  < lm[6].y  - 0.02
+        middle_up = lm[12].y < lm[10].y - 0.02
+
+        # Jari manis & kelingking menekuk
+        ring_curled  = lm[16].y > lm[14].y + 0.02
+        pinky_curled = lm[20].y > lm[18].y + 0.02
+
+        # Tip telunjuk dan tengah harus dekat secara x (silang)
+        ix = lm[8].x * frame_w
+        mx = lm[12].x * frame_w
+        close_x = abs(ix - mx) < 30   # dalam 30px
+
+        return index_up and middle_up and ring_curled and pinky_curled and close_x
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # FILTER BANK
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -735,25 +839,6 @@ class FPVHud:
         txt(f"     {ram_pct:.1f}%",   rx, 128, cls.C_DIM,   0.38, 1)
         txt(f"RES  {w}x{h}", rx, 148, cls.C_DIM, 0.40, 1)
 
-        # ══ CENTER crosshair
-        cx, cy = w//2, h//2
-        arm = 18; gap = 6
-        col_ch = cls.C_GREEN
-        cv2.line(frame, (cx-arm-gap, cy), (cx-gap, cy), col_ch, 1)
-        cv2.line(frame, (cx+gap, cy), (cx+arm+gap, cy), col_ch, 1)
-        cv2.line(frame, (cx, cy-arm-gap), (cx, cy-gap), col_ch, 1)
-        cv2.line(frame, (cx, cy+gap), (cx, cy+arm+gap), col_ch, 1)
-        cv2.circle(frame, (cx, cy), 3, col_ch, -1)
-        cv2.circle(frame, (cx, cy), arm+gap+4, col_ch, 1)
-        blen = 80
-        cv2.line(frame, (cx-blen, cy-1), (cx-gap-4, cy-1), cls.C_YELLOW, 2)
-        cv2.line(frame, (cx+gap+4, cy-1), (cx+blen, cy-1), cls.C_YELLOW, 2)
-        txt("0 deg", cx+blen+4, cy+4, cls.C_YELLOW, 0.35, 1)
-        brk = 20; bt = 2; bc = cls.C_GREEN
-        for (px,py,sx,sy) in [(0,0,1,1),(w,0,-1,1),(0,h,1,-1),(w,h,-1,-1)]:
-            cv2.line(frame,(px,py),(px+sx*brk,py),bc,bt)
-            cv2.line(frame,(px,py),(px,py+sy*brk),bc,bt)
-
         # ══ BOTTOM-LEFT fingertip coords
         if all_tips:
             hand_labels = ["L-HAND","R-HAND"]
@@ -771,25 +856,6 @@ class FPVHud:
                         10, base_y + hi*75 + 14 + fi*12,
                         col, 0.37, 1)
 
-        # ══ BOTTOM-CENTER legend (NOTE: tombol kamera digambar oleh PhotoCapture,
-        #    jadi legend kita geser sedikit ke atas agar tidak nabrak)
-        legend = [
-            ("PINCH",     "NEXT FILTER"),
-            ("V PEACE",   "BLUR FRAME"),
-            ("FIST x2",   "TOGGLE MODE"),
-            ("THUMB UP",  "POPUP NAME"),
-            ("N/P",       "FILTER STEP"),
-            ("F",         "FACE ON/OFF"),
-        ]
-        lw = 230; lh = len(legend)*14 + 10
-        lx = (w - lw) // 2 + 90   # geser kanan supaya tidak nabrak thumbnail+kamera
-        ly = h - lh - 75
-        panel(lx, ly, lx+lw, ly+lh)
-        cv2.rectangle(frame, (lx,ly), (lx+lw,ly+lh), cls.C_DIM, 1)
-        for i,(gesture,action) in enumerate(legend):
-            gy = ly + 12 + i*14
-            txt(f"{gesture:<12} {action}", lx+6, gy, cls.C_DIM, 0.35, 1)
-
         # ══ SCAN LINE
         for y_sl in range(0, h, 6):
             cv2.line(frame, (0, y_sl), (w, y_sl), (0,0,0), 1)
@@ -804,8 +870,8 @@ class FPVHud:
 @dataclass
 class PipelineConfig:
     cam_index: int = 0
-    frame_width: int = 960
-    frame_height: int = 540
+    frame_width: int = 1280
+    frame_height: int = 720
     pinch_threshold_px: float = 45.0
     filter_cooldown_sec: float = 0.15
     mode_cooldown_sec: float = 1.2
@@ -843,8 +909,8 @@ class PortalProcessor:
         self.mp_hands  = mp.solutions.hands
         self.mp_draw   = mp.solutions.drawing_utils
         self.detector  = self.mp_hands.Hands(
-            static_image_mode=False, max_num_hands=2, model_complexity=1,
-            min_detection_confidence=0.8, min_tracking_confidence=0.8)
+            static_image_mode=False, max_num_hands=2, model_complexity=0,
+            min_detection_confidence=0.6, min_tracking_confidence=0.5)
 
         self.face_proc    = FaceFilterProcessor(cfg)
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
@@ -853,6 +919,16 @@ class PortalProcessor:
         # Flag jempol untuk animasi close
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
+
+        # Flag sarangeo 🤟
+        self._sarangeo_triggered  = False
+        self._sarangeo_quote      = ""
+        self._sarangeo_quote_until = 0.0
+
+        # Flag crossed fingers 🤞
+        self._crossed_triggered   = False
+        self._crossed_quote       = ""
+        self._crossed_quote_until = 0.0
 
         # Tombol EXIT
         self._exit_requested = False
@@ -885,7 +961,10 @@ class PortalProcessor:
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
         """Return processed_frame."""
         frame   = cv2.flip(frame, 1)
-        frame   = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height))
+        h_cam, w_cam = frame.shape[:2]
+        if w_cam != self.cfg.frame_width or h_cam != self.cfg.frame_height:
+            frame = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height),
+                               interpolation=cv2.INTER_LINEAR)
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.detector.process(rgb)
         now     = time.time()
@@ -893,8 +972,10 @@ class PortalProcessor:
         all_tips    = []
         fist_count  = 0
         is_bowtie   = False
-        peace_count = 0
-        thumbsup    = False
+        peace_count      = 0
+        thumbsup         = False
+        sarangeo_any     = False
+        crossed_any      = False
 
         if results.multi_hand_landmarks:
             for hand_lm in results.multi_hand_landmarks:
@@ -916,6 +997,31 @@ class PortalProcessor:
                 if ThumbsUpChecker.is_thumbs_up(lm):
                     thumbsup = True
 
+                if SarangeoChecker.is_sarangeo(lm):
+                    sarangeo_any = True
+
+                if CrossedFingersChecker.is_crossed(lm, self.cfg.frame_width, self.cfg.frame_height):
+                    crossed_any = True
+
+        # ── Sarangeo — trigger sekali, reset saat gesture lepas ───────────────
+        if sarangeo_any:
+            if not self._sarangeo_triggered:
+                self._sarangeo_triggered   = True
+                self._sarangeo_quote       = random.choice(CROSSED_QUOTES)
+                self._sarangeo_quote_until = now + 3.0
+        else:
+            self._sarangeo_triggered = False
+
+        # ── Crossed fingers — trigger sekali, reset saat gesture lepas ────────
+        if crossed_any:
+            if not self._crossed_triggered:
+                self._crossed_triggered   = True
+                self._crossed_quote       = random.choice(SARANGEO_QUOTES)
+                self._crossed_quote_until = now + 3.0
+        else:
+            self._crossed_triggered = False
+
+        if results.multi_hand_landmarks:
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
 
@@ -963,6 +1069,61 @@ class PortalProcessor:
         else:
             self._thumbsup_triggered = False
 
+        # ── 🤟 Sarangeo → tampilkan kata-kata random di tengah layar ──────────
+        if now < self._sarangeo_quote_until and self._sarangeo_quote:
+            quote = self._sarangeo_quote
+            font  = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 1.2; thick = 2
+            fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
+            (tw, th), _ = cv2.getTextSize(quote, font, scale, thick)
+            tx = (fw_f - tw) // 2
+            ty = fh_f // 2
+
+            # Background semi-transparan
+            pad = 20
+            ovl = frame.copy()
+            cv2.rectangle(ovl,
+                          (tx - pad, ty - th - pad),
+                          (tx + tw + pad, ty + pad),
+                          (20, 10, 40), -1)
+            cv2.addWeighted(ovl, 0.65, frame, 0.35, 0, frame)
+
+            # Border pink
+            cv2.rectangle(frame,
+                          (tx - pad, ty - th - pad),
+                          (tx + tw + pad, ty + pad),
+                          (180, 80, 220), 2)
+
+            # Shadow + teks
+            cv2.putText(frame, quote, (tx+2, ty+2), font, scale, (0, 0, 0), thick+2, cv2.LINE_AA)
+            cv2.putText(frame, quote, (tx, ty), font, scale, (255, 180, 255), thick, cv2.LINE_AA)
+
+        # ── 🤞 Crossed Fingers → tampilkan kata-kata harapan random ──────────
+        if now < self._crossed_quote_until and self._crossed_quote:
+            quote = self._crossed_quote
+            font  = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 1.2; thick = 2
+            fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
+            (tw, th), _ = cv2.getTextSize(quote, font, scale, thick)
+            tx = (fw_f - tw) // 2
+            ty = fh_f // 2 + 80   # sedikit di bawah sarangeo supaya tidak tumpuk
+
+            pad = 20
+            ovl = frame.copy()
+            cv2.rectangle(ovl,
+                          (tx - pad, ty - th - pad),
+                          (tx + tw + pad, ty + pad),
+                          (10, 40, 20), -1)
+            cv2.addWeighted(ovl, 0.65, frame, 0.35, 0, frame)
+
+            cv2.rectangle(frame,
+                          (tx - pad, ty - th - pad),
+                          (tx + tw + pad, ty + pad),
+                          (50, 220, 120), 2)
+
+            cv2.putText(frame, quote, (tx+2, ty+2), font, scale, (0, 0, 0), thick+2, cv2.LINE_AA)
+            cv2.putText(frame, quote, (tx, ty), font, scale, (180, 255, 200), thick, cv2.LINE_AA)
+
         face_count = 0
         if self.face_mode:
             frame, face_count = self.face_proc.apply(frame, self.filters[self.current_filter])
@@ -976,6 +1137,14 @@ class PortalProcessor:
     def _draw_hud(self, frame, is_bowtie, face_count, all_tips=None, peace_active=False, fist_count=0):
         FPVHud.draw(frame, self, is_bowtie, face_count,
                     all_tips or [], peace_active, fist_count)
+        # Tombol EXIT — pojok kanan atas
+        ex1, ey1, ex2, ey2 = self._exit_btn_rect
+        ovl = frame.copy()
+        cv2.rectangle(ovl, (ex1, ey1), (ex2, ey2), (30, 20, 20), -1)
+        cv2.addWeighted(ovl, 0.8, frame, 0.2, 0, frame)
+        cv2.rectangle(frame, (ex1, ey1), (ex2, ey2), (60, 60, 200), 1)
+        cv2.putText(frame, "EXIT", (ex1 + 8, ey2 - 7),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 255), 1, cv2.LINE_AA)
 
     def close(self):
         self.face_proc.close()
@@ -1075,46 +1244,46 @@ class IntroScreen:
 
         # ── Judul
         title = "TRACKING ENGINE"
-        (tw, _), _ = cv2.getTextSize(title, font, 1.3, 2)
-        cv2.putText(frame, title, ((fw - tw) // 2, fh // 2 - 120),
-                    font, 1.3, (0, 220, 255), 2, cv2.LINE_AA)
+        (tw, _), _ = cv2.getTextSize(title, font, 2.2, 4)
+        cv2.putText(frame, title, ((fw - tw) // 2, fh // 2 - 200),
+                    font, 2.2, (0, 220, 255), 4, cv2.LINE_AA)
 
         # ── Sub
         sub = "Siapa nama Anda?"
-        (sw, _), _ = cv2.getTextSize(sub, font, 0.65, 1)
-        cv2.putText(frame, sub, ((fw - sw) // 2, fh // 2 - 68),
-                    font, 0.65, (160, 160, 160), 1, cv2.LINE_AA)
+        (sw, _), _ = cv2.getTextSize(sub, font, 1.1, 2)
+        cv2.putText(frame, sub, ((fw - sw) // 2, fh // 2 - 100),
+                    font, 1.1, (160, 160, 160), 2, cv2.LINE_AA)
 
         # ── Input box
-        bx1, bx2 = fw // 2 - 220, fw // 2 + 220
-        by1, by2 = fh // 2 - 36,  fh // 2 + 12
+        bx1, bx2 = fw // 2 - 380, fw // 2 + 380
+        by1, by2 = fh // 2 - 50,  fh // 2 + 24
         cv2.rectangle(frame, (bx1, by1), (bx2, by2), (30, 30, 40), -1)
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 180, 255), 1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 180, 255), 2)
 
         # Cursor blink
         if now - self._cursor_t > 0.5:
             self.cursor_vis = not self.cursor_vis
             self._cursor_t  = now
         display = self.name + ("|" if self.cursor_vis else " ")
-        cv2.putText(frame, display, (bx1 + 10, by2 - 8),
-                    font, 0.75, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, display, (bx1 + 18, by2 - 12),
+                    font, 1.2, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # ── Tombol OK
-        bw_ok, bh_ok = 160, 40
+        # ── Tombol OK (recalc supaya sesuai resolusi)
+        bw_ok, bh_ok = 280, 68
         ox1 = fw // 2 - bw_ok // 2
-        oy1 = fh // 2 + 40
+        oy1 = fh // 2 + 60
         ox2 = ox1 + bw_ok
         oy2 = oy1 + bh_ok
         self._ok_rect = (ox1, oy1, ox2, oy2)
         cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 140, 60), -1)
-        cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 220, 100), 1)
-        (ltw, _), _ = cv2.getTextSize("OK  /  Enter", font, 0.55, 1)
-        cv2.putText(frame, "OK  /  Enter", ((fw - ltw) // 2, oy2 - 12),
-                    font, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 220, 100), 2)
+        (ltw, _), _ = cv2.getTextSize("OK  /  Enter", font, 0.95, 2)
+        cv2.putText(frame, "OK  /  Enter", ((fw - ltw) // 2, oy2 - 18),
+                    font, 0.95, (255, 255, 255), 2, cv2.LINE_AA)
 
         # ── Footer
-        cv2.putText(frame, "Powered by Faisaldev", (10, fh - 12),
-                    font, 0.42, (50, 50, 60), 1, cv2.LINE_AA)
+        cv2.putText(frame, "Powered by Faisaldev", (20, fh - 20),
+                    font, 0.7, (50, 50, 60), 1, cv2.LINE_AA)
 
     def _draw_typing(self, frame: np.ndarray) -> None:
         fw, fh = self.fw, self.fh
@@ -1122,7 +1291,7 @@ class IntroScreen:
 
         font   = cv2.FONT_HERSHEY_SIMPLEX
         now    = time.time()
-        line_h = 46
+        line_h = 72
 
         # Advance typewriter
         if self._line_idx < len(self._lines):
@@ -1157,19 +1326,19 @@ class IntroScreen:
             # Pilih warna per baris
             if i == 0:
                 color = (0, 220, 255)        # cyan — "Halo, nama"
-                scale = 0.85; thick = 2
+                scale = 1.5; thick = 3
             elif i == len(self._lines) - 1:
                 color = (180, 180, 180)      # abu — "— Faisaldev"
-                scale = 0.48; thick = 1
+                scale = 0.9; thick = 2
             elif "Requested by" in line:
                 color = (0, 215, 255)        # gold — "Requested by Mas Rofiqz RJS"
-                scale = 0.62; thick = 2
+                scale = 1.1; thick = 3
             elif "In engineer" in line:
                 color = (0, 215, 255)        # kuning
-                scale = 0.62; thick = 1
+                scale = 1.1; thick = 2
             else:
                 color = (200, 200, 200)
-                scale = 0.58; thick = 1
+                scale = 1.05; thick = 2
 
             (tw, _), _ = cv2.getTextSize(rendered, font, scale, thick)
             tx = (fw - tw) // 2
@@ -1187,8 +1356,8 @@ class IntroScreen:
             cv2.putText(frame, disp, (tx, ty), font, scale, color, thick, cv2.LINE_AA)
 
         # Footer
-        cv2.putText(frame, "Powered by Faisaldev", (10, fh - 12),
-                    font, 0.42, (50, 50, 60), 1, cv2.LINE_AA)
+        cv2.putText(frame, "Powered by Faisaldev", (20, fh - 20),
+                    font, 0.7, (50, 50, 60), 1, cv2.LINE_AA)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1234,8 +1403,8 @@ def main():
         print("[ERROR] Kamera tidak terdeteksi!"); return
 
     # Set resolusi kamera ke HD secara hardware
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
