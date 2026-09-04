@@ -916,6 +916,10 @@ class PortalProcessor:
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
         self.photo_cap    = PhotoCapture(cfg.frame_width, cfg.frame_height)
 
+        # Auto-rotate filter tiap 3 detik
+        self._auto_rotate_interval = 3.0
+        self._last_auto_rotate     = time.time()
+
         # Flag jempol untuk animasi close
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
@@ -968,6 +972,11 @@ class PortalProcessor:
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.detector.process(rgb)
         now     = time.time()
+
+        # ── Auto-rotate filter tiap 3 detik ───────────────────────────────────
+        if now - self._last_auto_rotate >= self._auto_rotate_interval:
+            self.cycle_filter(1)
+            self._last_auto_rotate = now
 
         all_tips    = []
         fist_count  = 0
@@ -1166,7 +1175,7 @@ class IntroScreen:
         "Selamat datang di Tracking Engine.",
         "Sistem siap digunakan.",
         "",
-        "Requested by Mas Rofiqz RJS",
+        "Requested by {name}",
         "",
         "In engineer we trust.",
         "— Faisaldev",
@@ -1458,15 +1467,13 @@ def main():
         ret, frame = cap.read()
         if not ret: break
 
-        # Capture foto jika tombol kamera diklik
-        if _pending_capture:
-            _pending_capture = False
-            processor.photo_cap.trigger_capture(
-                cv2.resize(cv2.flip(frame, 1), (cfg.frame_width, cfg.frame_height))
-            )
-
         out = processor.process_frame(frame)
         cv2.imshow(win, out)
+
+        # Capture foto dari frame yang sudah ada HUD + tracking (bukan raw kamera)
+        if _pending_capture:
+            _pending_capture = False
+            processor.photo_cap.trigger_capture(out)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q") or processor._exit_requested:
