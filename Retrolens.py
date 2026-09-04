@@ -870,8 +870,8 @@ class FPVHud:
 @dataclass
 class PipelineConfig:
     cam_index: int = 0
-    frame_width: int = 1920
-    frame_height: int = 1080
+    frame_width: int = 1280
+    frame_height: int = 720
     pinch_threshold_px: float = 45.0
     filter_cooldown_sec: float = 0.15
     mode_cooldown_sec: float = 1.2
@@ -1392,8 +1392,8 @@ def main():
         print("[ERROR] Kamera tidak terdeteksi!"); return
 
     # Set resolusi kamera ke HD secara hardware
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
