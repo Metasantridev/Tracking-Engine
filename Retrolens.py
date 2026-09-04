@@ -807,21 +807,109 @@ class FPVHud:
             cv2.rectangle(frame, (x, y), (x+int(bw*pct/100), y+bh), fg, -1)
             cv2.rectangle(frame, (x, y), (x+bw, y+bh), cls.C_DIM, 1)
 
-        # ══ TOP-LEFT
-        panel(4, 4, 310, 115)
-        cv2.rectangle(frame, (4,4), (310,115), cls.C_CYAN, 1)
+        # ══ TOP-LEFT — status
+        panel(4, 4, 310, 130)
+        cv2.rectangle(frame, (4,4), (310,130), cls.C_CYAN, 1)
         mode_str  = "3D-MESH" if proc.is_3d_mode else ("2D-BOWTIE" if is_bowtie else "2D-QUAD")
         face_str  = f"FACE {face_count}" if proc.face_mode else "FACE OFF"
-        txt(f"MODE   {mode_str}",          14, 24,  cls.C_CYAN,   0.50, 1)
-        txt(f"FILTER {proc.current_filter.upper()}", 14, 44, cls.C_WHITE, 0.50, 1)
-        txt(f"HANDS  {len(all_tips)}  |  {face_str}", 14, 64, cls.C_TEAL,  0.45, 1)
+        hand_str  = f"HAND {len(all_tips)}" if proc.hand_tracking else "HAND OFF"
+        txt(f"MODE   {mode_str}",          14, 22,  cls.C_CYAN,   0.48, 1)
+        txt(f"FILTER {proc.current_filter.upper()} ({proc.hand_filter_mode.upper()})", 14, 40, cls.C_WHITE, 0.46, 1)
+        txt(f"FACE   {proc.face_current_filter.upper()} ({proc.face_filter_mode.upper()})", 14, 58, cls.C_TEAL, 0.46, 1)
+        txt(f"{hand_str}  |  {face_str}", 14, 76, cls.C_TEAL, 0.43, 1)
         gestures = []
         if peace_active:       gestures.append("V BLUR")
-        if fist_count == 2:    gestures.append("FIST2 MODE")
+        if fist_count == 2:    gestures.append("FIST2")
         if fist_count == 1:    gestures.append("FIST")
         g_str = "  ".join(gestures) if gestures else "-"
-        txt(f"GESTURE {g_str}", 14, 84, cls.C_ORANGE, 0.45, 1)
-        txt(f"NEXT   {proc.secondary_filter.upper()}", 14, 104, cls.C_DIM, 0.40, 1)
+        txt(f"GESTURE {g_str}", 14, 94,  cls.C_ORANGE, 0.43, 1)
+        txt(f"NEXT   {proc.secondary_filter.upper()}", 14, 112, cls.C_DIM, 0.38, 1)
+
+        # ══ CONTROL PANEL — di bawah TOP-LEFT ════════════════════════════════
+        # Layout: 4 baris — Hand On/Off, Hand Filter mode+pilih,
+        #                    Face On/Off, Face Filter mode+pilih
+        cp_x1, cp_y1 = 4, 136
+        cp_x2, cp_y2 = 310, 340
+        panel(cp_x1, cp_y1, cp_x2, cp_y2, 0.45)
+        cv2.rectangle(frame, (cp_x1, cp_y1), (cp_x2, cp_y2), (180, 100, 255), 1)
+        cv2.putText(frame, "CONTROL PANEL", (cp_x1+10, cp_y1+16),
+                    cls.FONT, 0.44, (180, 100, 255), 1, cv2.LINE_AA)
+
+        def cp_btn(label, x1, y1, x2, y2, active, color_on, color_off=(60,60,60)):
+            col = color_on if active else color_off
+            cv2.rectangle(frame, (x1,y1), (x2,y2), col, -1)
+            cv2.rectangle(frame, (x1,y1), (x2,y2), (180,180,180), 1)
+            tw2, _ = cv2.getTextSize(label, cls.FONT, 0.38, 1)[:2]
+            tx2 = x1 + (x2-x1-tw2[0]) // 2
+            ty2 = y1 + (y2-y1+tw2[1]) // 2
+            cv2.putText(frame, label, (tx2, ty2), cls.FONT, 0.38,
+                        (255,255,255) if active else (140,140,140), 1, cv2.LINE_AA)
+
+        # ── baris 1: HAND toggle ──────────────────────────────────────────────
+        r1y1, r1y2 = cp_y1+22, cp_y1+46
+        cv2.putText(frame, "HAND TRACKING", (cp_x1+10, r1y1+16),
+                    cls.FONT, 0.40, cls.C_WHITE, 1, cv2.LINE_AA)
+        hton_x1, hton_x2 = cp_x2-110, cp_x2-60
+        htoff_x1, htoff_x2 = cp_x2-58, cp_x2-8
+        cp_btn("ON",  hton_x1,  r1y1, hton_x2,  r1y2, proc.hand_tracking,  (0,160,60))
+        cp_btn("OFF", htoff_x1, r1y1, htoff_x2, r1y2, not proc.hand_tracking, (160,40,40))
+        proc._cp_hand_toggle_rect = (hton_x1, r1y1, htoff_x2, r1y2)
+
+        # ── baris 2: HAND filter mode + prev/next ────────────────────────────
+        r2y1, r2y2 = r1y2+6, r1y2+30
+        is_hauto = proc.hand_filter_mode == "auto"
+        cv2.putText(frame, "  FILTER TANGAN:", (cp_x1+4, r2y1+14),
+                    cls.FONT, 0.37, cls.C_DIM, 1, cv2.LINE_AA)
+        # AUTO/MANUAL toggle
+        hma_x1, hma_x2 = cp_x1+110, cp_x1+158
+        cp_btn("AUTO", hma_x1, r2y1, hma_x2, r2y2, is_hauto, (0,120,200))
+        hmm_x1, hmm_x2 = cp_x1+160, cp_x1+214
+        cp_btn("PILIH", hmm_x1, r2y1, hmm_x2, r2y2, not is_hauto, (100,60,180))
+        proc._cp_hand_mode_rect = (hma_x1, r2y1, hmm_x2, r2y2)
+        # Prev/Next (muncul saat manual)
+        if not is_hauto:
+            hp_x1, hp_x2 = cp_x2-56, cp_x2-32
+            hn_x1, hn_x2 = cp_x2-30, cp_x2-6
+            cp_btn("<", hp_x1, r2y1, hp_x2, r2y2, True, (60,60,100))
+            cp_btn(">", hn_x1, r2y1, hn_x2, r2y2, True, (60,60,100))
+            proc._cp_hand_prev_rect = (hp_x1, r2y1, hp_x2, r2y2)
+            proc._cp_hand_next_rect = (hn_x1, r2y1, hn_x2, r2y2)
+            cv2.putText(frame, proc.filter_keys[proc.hand_filter_idx].upper(),
+                        (cp_x2-130, r2y2-6), cls.FONT, 0.34, cls.C_YELLOW, 1, cv2.LINE_AA)
+
+        # ── separator ─────────────────────────────────────────────────────────
+        sep_y = r2y2+4
+        cv2.line(frame, (cp_x1+6, sep_y), (cp_x2-6, sep_y), (80,80,80), 1)
+
+        # ── baris 3: FACE toggle ──────────────────────────────────────────────
+        r3y1, r3y2 = sep_y+4, sep_y+28
+        cv2.putText(frame, "FACE TRACKING", (cp_x1+10, r3y1+16),
+                    cls.FONT, 0.40, cls.C_WHITE, 1, cv2.LINE_AA)
+        fton_x1, fton_x2 = cp_x2-110, cp_x2-60
+        ftoff_x1, ftoff_x2 = cp_x2-58, cp_x2-8
+        cp_btn("ON",  fton_x1,  r3y1, fton_x2,  r3y2, proc.face_mode,  (0,160,60))
+        cp_btn("OFF", ftoff_x1, r3y1, ftoff_x2, r3y2, not proc.face_mode, (160,40,40))
+        proc._cp_face_toggle_rect = (fton_x1, r3y1, ftoff_x2, r3y2)
+
+        # ── baris 4: FACE filter mode + prev/next ────────────────────────────
+        r4y1, r4y2 = r3y2+6, r3y2+30
+        is_fauto = proc.face_filter_mode == "auto"
+        cv2.putText(frame, "  FILTER WAJAH:", (cp_x1+4, r4y1+14),
+                    cls.FONT, 0.37, cls.C_DIM, 1, cv2.LINE_AA)
+        fma_x1, fma_x2 = cp_x1+110, cp_x1+158
+        cp_btn("AUTO",  fma_x1, r4y1, fma_x2, r4y2, is_fauto,  (0,120,200))
+        fmm_x1, fmm_x2 = cp_x1+160, cp_x1+214
+        cp_btn("PILIH", fmm_x1, r4y1, fmm_x2, r4y2, not is_fauto, (100,60,180))
+        proc._cp_face_mode_rect = (fma_x1, r4y1, fmm_x2, r4y2)
+        if not is_fauto:
+            fp_x1, fp_x2 = cp_x2-56, cp_x2-32
+            fn_x1, fn_x2 = cp_x2-30, cp_x2-6
+            cp_btn("<", fp_x1, r4y1, fp_x2, r4y2, True, (60,60,100))
+            cp_btn(">", fn_x1, r4y1, fn_x2, r4y2, True, (60,60,100))
+            proc._cp_face_prev_rect = (fp_x1, r4y1, fp_x2, r4y2)
+            proc._cp_face_next_rect = (fn_x1, r4y1, fn_x2, r4y2)
+            cv2.putText(frame, proc.filter_keys[proc.face_filter_idx].upper(),
+                        (cp_x2-130, r4y2-6), cls.FONT, 0.34, cls.C_YELLOW, 1, cv2.LINE_AA)
 
         # ══ TOP-RIGHT
         panel(w-220, 4, w-4, 155)
@@ -916,8 +1004,8 @@ class PortalProcessor:
         self.watermark_ui = WatermarkUI(cfg.frame_width, cfg.frame_height)
         self.photo_cap    = PhotoCapture(cfg.frame_width, cfg.frame_height)
 
-        # Auto-rotate filter tiap 3 detik
-        self._auto_rotate_interval = 3.0
+        # Auto-rotate filter — interval random 1 atau 2 detik
+        self._auto_rotate_interval = random.choice([1.0, 2.0])
         self._last_auto_rotate     = time.time()
 
         # Flag jempol untuk animasi close
@@ -938,10 +1026,43 @@ class PortalProcessor:
         self._exit_requested = False
         self._exit_btn_rect  = (cfg.frame_width - 70, 4, cfg.frame_width - 4, 30)
 
+        # ── Control Panel: tracking & filter ─────────────────────────────────
+        # Toggle: aktifkan/matikan tracking tangan & wajah
+        self.hand_tracking    = True    # tracking tangan ON/OFF
+        # face_mode sudah ada (tracking + filter wajah)
+
+        # Filter mode: "auto" (rotate otomatis) atau "manual" (pilih satu)
+        self.hand_filter_mode = "auto"  # "auto" | "manual"
+        self.face_filter_mode = "auto"  # "auto" | "manual"
+
+        # Index filter tangan & wajah saat mode manual
+        self.hand_filter_idx  = 0
+        self.face_filter_idx  = 0
+
+        # Rect tombol di HUD control panel (diisi saat draw)
+        self._cp_hand_toggle_rect   = (0,0,0,0)
+        self._cp_face_toggle_rect   = (0,0,0,0)
+        self._cp_hand_mode_rect     = (0,0,0,0)
+        self._cp_face_mode_rect     = (0,0,0,0)
+        self._cp_hand_prev_rect     = (0,0,0,0)
+        self._cp_hand_next_rect     = (0,0,0,0)
+        self._cp_face_prev_rect     = (0,0,0,0)
+        self._cp_face_next_rect     = (0,0,0,0)
+
     @property
-    def current_filter(self): return self.filter_keys[self.active_filter_idx]
+    def current_filter(self):
+        idx = self.hand_filter_idx if self.hand_filter_mode == "manual" else self.active_filter_idx
+        return self.filter_keys[idx]
+
     @property
-    def secondary_filter(self): return self.filter_keys[(self.active_filter_idx+1) % len(self.filter_keys)]
+    def secondary_filter(self):
+        idx = self.hand_filter_idx if self.hand_filter_mode == "manual" else self.active_filter_idx
+        return self.filter_keys[(idx + 1) % len(self.filter_keys)]
+
+    @property
+    def face_current_filter(self):
+        idx = self.face_filter_idx if self.face_filter_mode == "manual" else self.active_filter_idx
+        return self.filter_keys[idx]
 
     def cycle_filter(self, step=1):
         self.active_filter_idx = (self.active_filter_idx+step) % len(self.filter_keys)
@@ -973,10 +1094,13 @@ class PortalProcessor:
         results = self.detector.process(rgb)
         now     = time.time()
 
-        # ── Auto-rotate filter tiap 3 detik ───────────────────────────────────
-        if now - self._last_auto_rotate >= self._auto_rotate_interval:
-            self.cycle_filter(1)
-            self._last_auto_rotate = now
+        # ── Auto-rotate filter — interval random 1/2 detik ────────────────────
+        # Hanya rotate jika setidaknya satu mode masih "auto"
+        if self.hand_filter_mode == "auto" or self.face_filter_mode == "auto":
+            if now - self._last_auto_rotate >= self._auto_rotate_interval:
+                self.cycle_filter(1)
+                self._auto_rotate_interval = random.choice([1.0, 2.0])
+                self._last_auto_rotate = now
 
         all_tips    = []
         fist_count  = 0
@@ -986,7 +1110,7 @@ class PortalProcessor:
         sarangeo_any     = False
         crossed_any      = False
 
-        if results.multi_hand_landmarks:
+        if results.multi_hand_landmarks and self.hand_tracking:
             for hand_lm in results.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(frame, hand_lm, self.mp_hands.HAND_CONNECTIONS)
                 lm   = hand_lm.landmark
@@ -995,7 +1119,9 @@ class PortalProcessor:
 
                 if GeometryUtils.euclidean_dist(tips[0], tips[4]) < self.cfg.pinch_threshold_px:
                     if now - self.last_switch_time > self.cfg.filter_cooldown_sec:
-                        self.cycle_filter(1); self.last_switch_time = now
+                        if self.hand_filter_mode == "auto":
+                            self.cycle_filter(1)
+                        self.last_switch_time = now
 
                 if GeometryUtils.is_fist_closed(lm, self.cfg.frame_width, self.cfg.frame_height, self.cfg.fist_dist_threshold_px):
                     fist_count += 1
@@ -1135,7 +1261,7 @@ class PortalProcessor:
 
         face_count = 0
         if self.face_mode:
-            frame, face_count = self.face_proc.apply(frame, self.filters[self.current_filter])
+            frame, face_count = self.face_proc.apply(frame, self.filters[self.face_current_filter])
 
         self._draw_hud(frame, is_bowtie, face_count, all_tips, peace_count > 0, fist_count)
         self.watermark_ui.draw(frame)
@@ -1384,15 +1510,68 @@ def _on_mouse(event, x, y, flags, param):
             _intro_ref.handle_click(x, y)
             return
         if _processor_ref:
+            p = _processor_ref
+
             # Cek tombol EXIT
-            ex1, ey1, ex2, ey2 = _processor_ref._exit_btn_rect
+            ex1, ey1, ex2, ey2 = p._exit_btn_rect
             if ex1 <= x <= ex2 and ey1 <= y <= ey2:
-                _processor_ref._exit_requested = True
+                p._exit_requested = True
                 return
+
+            # ── Control Panel: HAND tracking ON/OFF ──────────────────────────
+            hx1, hy1, hx2, hy2 = p._cp_hand_toggle_rect
+            if hx1 <= x <= hx2 and hy1 <= y <= hy2:
+                mid = (hx1 + hx2) // 2
+                p.hand_tracking = (x <= mid)
+                return
+
+            # ── Control Panel: HAND filter mode ──────────────────────────────
+            hma_x1, hm_y1, hmm_x2, hm_y2 = p._cp_hand_mode_rect
+            if hma_x1 <= x <= hmm_x2 and hm_y1 <= y <= hm_y2:
+                mid = (hma_x1 + hmm_x2) // 2
+                p.hand_filter_mode = "auto" if x <= mid else "manual"
+                return
+
+            # ── Control Panel: HAND filter prev/next (manual mode) ────────────
+            if p.hand_filter_mode == "manual":
+                hpx1, hpy1, hpx2, hpy2 = p._cp_hand_prev_rect
+                hnx1, hny1, hnx2, hny2 = p._cp_hand_next_rect
+                if hpx1 <= x <= hpx2 and hpy1 <= y <= hpy2:
+                    p.hand_filter_idx = (p.hand_filter_idx - 1) % len(p.filter_keys)
+                    return
+                if hnx1 <= x <= hnx2 and hny1 <= y <= hny2:
+                    p.hand_filter_idx = (p.hand_filter_idx + 1) % len(p.filter_keys)
+                    return
+
+            # ── Control Panel: FACE tracking ON/OFF ──────────────────────────
+            fx1, fy1, fx2, fy2 = p._cp_face_toggle_rect
+            if fx1 <= x <= fx2 and fy1 <= y <= fy2:
+                mid = (fx1 + fx2) // 2
+                p.face_mode = (x <= mid)
+                return
+
+            # ── Control Panel: FACE filter mode ──────────────────────────────
+            fma_x1, fm_y1, fmm_x2, fm_y2 = p._cp_face_mode_rect
+            if fma_x1 <= x <= fmm_x2 and fm_y1 <= y <= fm_y2:
+                mid = (fma_x1 + fmm_x2) // 2
+                p.face_filter_mode = "auto" if x <= mid else "manual"
+                return
+
+            # ── Control Panel: FACE filter prev/next (manual mode) ────────────
+            if p.face_filter_mode == "manual":
+                fpx1, fpy1, fpx2, fpy2 = p._cp_face_prev_rect
+                fnx1, fny1, fnx2, fny2 = p._cp_face_next_rect
+                if fpx1 <= x <= fpx2 and fpy1 <= y <= fpy2:
+                    p.face_filter_idx = (p.face_filter_idx - 1) % len(p.filter_keys)
+                    return
+                if fnx1 <= x <= fnx2 and fny1 <= y <= fny2:
+                    p.face_filter_idx = (p.face_filter_idx + 1) % len(p.filter_keys)
+                    return
+
             # Cek watermark dulu
-            _processor_ref.watermark_ui.handle_click(x, y)
+            p.watermark_ui.handle_click(x, y)
             # Cek photo capture
-            if _processor_ref.photo_cap.handle_click(x, y):
+            if p.photo_cap.handle_click(x, y):
                 _pending_capture = True
 
 
