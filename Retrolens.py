@@ -217,16 +217,14 @@ class PhotoCapture:
     # ── public ────────────────────────────────────────────────────────────────
 
     def trigger_capture(self, frame: np.ndarray) -> None:
-        """Simpan foto dan tampilkan prank popup."""
         ts = int(time.time())
         fn = f"photo_{ts}.png"
         cv2.imwrite(fn, frame)
         self.last_photo    = frame.copy()
         self.last_filename = fn
         self.thumb_img     = cv2.resize(frame, (self.THUMB_W, self.THUMB_H))
-        # Prank popup
-        self.prank_msg   = "Berhasil mengambil Rp74.900 saldo dari rekening anda!"
-        self.prank_until = time.time() + 4.0
+        self.prank_msg   = f"Foto disimpan: {fn}"
+        self.prank_until = time.time() + 2.5
         print(f"[SNAP] Foto disimpan: {fn}")
 
     def handle_click(self, mx: int, my: int) -> bool:
@@ -376,39 +374,16 @@ class PhotoCapture:
         if not self.prank_msg or time.time() > self.prank_until:
             self.prank_msg = ""
             return
-
-        lines = self.prank_msg.split("\n")
         font  = cv2.FONT_HERSHEY_SIMPLEX
-        scale = 0.65
-        thick = 2
-        padding = 18
-        line_h  = 34
-
-        max_w = max(cv2.getTextSize(l, font, scale, thick)[0][0] for l in lines)
-        total_h = len(lines) * line_h + padding
-
-        bx1 = (self.fw - max_w) // 2 - padding
-        by1 = self.fh // 2 - total_h // 2
-        bx2 = bx1 + max_w + padding * 2
-        by2 = by1 + total_h + padding
-
-        # Panel
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (bx1-4, by1-4), (bx2+4, by2+4), (0, 0, 200), -1)
-        cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (30, 30, 180), -1)
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (100, 100, 255), 2)
-
-        # Ikon warning
-        cv2.putText(frame, "! PERINGATAN !", (bx1+padding, by1+24),
-                    font, 0.55, (255, 255, 50), 2, cv2.LINE_AA)
-        cv2.line(frame, (bx1, by1+32), (bx2, by1+32), (80, 80, 200), 1)
-
-        for i, line in enumerate(lines):
-            (tw, _), _ = cv2.getTextSize(line, font, scale, thick)
-            tx = (self.fw - tw) // 2
-            ty = by1 + 52 + i * line_h
-            cv2.putText(frame, line, (tx, ty), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
+        scale = 0.52; thick = 1
+        (tw, _), _ = cv2.getTextSize(self.prank_msg, font, scale, thick)
+        tx = (self.fw - tw) // 2
+        ty = self.fh - 70
+        ovl = frame.copy()
+        cv2.rectangle(ovl, (tx-14, ty-20), (tx+tw+14, ty+8), (15, 15, 15), -1)
+        cv2.addWeighted(ovl, 0.75, frame, 0.25, 0, frame)
+        cv2.rectangle(frame, (tx-14, ty-20), (tx+tw+14, ty+8), (0, 200, 120), 1)
+        cv2.putText(frame, self.prank_msg, (tx, ty), font, scale, (0, 220, 140), thick, cv2.LINE_AA)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
