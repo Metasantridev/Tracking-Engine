@@ -829,7 +829,7 @@ class FPVHud:
         # Layout: 4 baris — Hand On/Off, Hand Filter mode+pilih,
         #                    Face On/Off, Face Filter mode+pilih
         cp_x1, cp_y1 = 4, 136
-        cp_x2, cp_y2 = 310, 340
+        cp_x2, cp_y2 = 310, 410
         panel(cp_x1, cp_y1, cp_x2, cp_y2, 0.45)
         cv2.rectangle(frame, (cp_x1, cp_y1), (cp_x2, cp_y2), (180, 100, 255), 1)
         cv2.putText(frame, "CONTROL PANEL", (cp_x1+10, cp_y1+16),
@@ -910,6 +910,56 @@ class FPVHud:
             proc._cp_face_next_rect = (fn_x1, r4y1, fn_x2, r4y2)
             cv2.putText(frame, proc.filter_keys[proc.face_filter_idx].upper(),
                         (cp_x2-130, r4y2-6), cls.FONT, 0.34, cls.C_YELLOW, 1, cv2.LINE_AA)
+
+        # ── separator 2 ───────────────────────────────────────────────────────
+        sep2_y = r4y2 + 4
+        cv2.line(frame, (cp_x1+6, sep2_y), (cp_x2-6, sep2_y), (80,80,80), 1)
+
+        # ── baris 5: BACKGROUND ───────────────────────────────────────────────
+        r5y1, r5y2 = sep2_y + 4, sep2_y + 28
+        bg_name = proc.bg_options[proc.bg_idx]["name"]
+        cv2.putText(frame, "BACKGROUND:", (cp_x1+10, r5y1+16),
+                    cls.FONT, 0.40, cls.C_WHITE, 1, cv2.LINE_AA)
+
+        # Swatch warna kecil untuk bg aktif
+        bg_val = proc.bg_options[proc.bg_idx]["value"]
+        swatch_x1, swatch_y1 = cp_x1+120, r5y1+2
+        swatch_x2, swatch_y2 = cp_x1+150, r5y1+18
+        if isinstance(bg_val, tuple):
+            cv2.rectangle(frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), bg_val, -1)
+            cv2.rectangle(frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), (200,200,200), 1)
+        elif bg_val in ("blur", "pixelate"):
+            cv2.putText(frame, bg_val[:4].upper(), (swatch_x1+1, swatch_y2-3),
+                        cls.FONT, 0.32, cls.C_CYAN, 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "CAM", (swatch_x1+1, swatch_y2-3),
+                        cls.FONT, 0.32, cls.C_DIM, 1, cv2.LINE_AA)
+
+        # Nama BG aktif
+        cv2.putText(frame, bg_name, (swatch_x2+6, r5y2-6),
+                    cls.FONT, 0.38, cls.C_YELLOW, 1, cv2.LINE_AA)
+
+        # Tombol prev/next background
+        bgp_x1, bgp_x2 = cp_x2-56, cp_x2-32
+        bgn_x1, bgn_x2 = cp_x2-30, cp_x2-6
+        cp_btn("<", bgp_x1, r5y1, bgp_x2, r5y2, True, (60,60,100))
+        cp_btn(">", bgn_x1, r5y1, bgn_x2, r5y2, True, (60,60,100))
+        proc._cp_bg_prev_rect = (bgp_x1, r5y1, bgp_x2, r5y2)
+        proc._cp_bg_next_rect = (bgn_x1, r5y1, bgn_x2, r5y2)
+
+        # Dot indicators — semua opsi background
+        dot_start_x = cp_x1 + 10
+        dot_y       = r5y2 + 10
+        n_bg = len(proc.bg_options)
+        dot_gap = min(22, (cp_x2 - cp_x1 - 20) // max(n_bg, 1))
+        for i, opt in enumerate(proc.bg_options):
+            dx = dot_start_x + i * dot_gap
+            is_active = (i == proc.bg_idx)
+            col = cls.C_YELLOW if is_active else (60, 60, 60)
+            r   = 5 if is_active else 3
+            cv2.circle(frame, (dx, dot_y), r, col, -1)
+            if is_active:
+                cv2.circle(frame, (dx, dot_y), r+1, (200,200,0), 1)
 
         # ══ TOP-RIGHT
         panel(w-220, 4, w-4, 155)
@@ -1049,6 +1099,27 @@ class PortalProcessor:
         self._cp_face_prev_rect     = (0,0,0,0)
         self._cp_face_next_rect     = (0,0,0,0)
 
+        # ── Background replacement ────────────────────────────────────────────
+        # Pilihan background: nama → solid BGR atau callable(h,w)→frame
+        self.bg_options = [
+            {"name": "NORMAL",   "value": None},
+            {"name": "PUTIH",    "value": (255, 255, 255)},
+            {"name": "HITAM",    "value": (0,   0,   0)},
+            {"name": "MERAH",    "value": (0,   0,   200)},
+            {"name": "BIRU",     "value": (200, 80,  0)},
+            {"name": "HIJAU",    "value": (0,   180, 60)},
+            {"name": "KUNING",   "value": (0,   220, 255)},
+            {"name": "UNGU",     "value": (180, 40,  180)},
+            {"name": "BLUR",     "value": "blur"},
+            {"name": "PIXEL",    "value": "pixelate"},
+        ]
+        self.bg_idx       = 0   # 0 = NORMAL (tidak ganti)
+        self._cp_bg_prev_rect = (0,0,0,0)
+        self._cp_bg_next_rect = (0,0,0,0)
+
+        # Selfie segmentation (lazy init, baru aktif saat bg != NORMAL)
+        self._seg_model  = None
+
     @property
     def current_filter(self):
         idx = self.hand_filter_idx if self.hand_filter_mode == "manual" else self.active_filter_idx
@@ -1063,6 +1134,43 @@ class PortalProcessor:
     def face_current_filter(self):
         idx = self.face_filter_idx if self.face_filter_mode == "manual" else self.active_filter_idx
         return self.filter_keys[idx]
+
+    def _get_seg_model(self):
+        """Lazy-init MediaPipe Selfie Segmentation."""
+        if self._seg_model is None:
+            self._seg_model = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=1)
+        return self._seg_model
+
+    def _apply_background(self, frame: np.ndarray) -> np.ndarray:
+        """Ganti background berdasarkan bg_idx. Return frame baru."""
+        bg_opt = self.bg_options[self.bg_idx]
+        val    = bg_opt["value"]
+        if val is None:
+            return frame   # NORMAL — tidak diubah
+
+        h, w = frame.shape[:2]
+        seg  = self._get_seg_model()
+        res  = seg.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        if res.segmentation_mask is None:
+            return frame
+        mask = res.segmentation_mask   # float32 0..1, 1=orang
+
+        # Buat background
+        if isinstance(val, tuple):
+            bg = np.full((h, w, 3), val, dtype=np.uint8)
+        elif val == "blur":
+            bg = cv2.GaussianBlur(frame, (55, 55), 0)
+        elif val == "pixelate":
+            small = cv2.resize(frame, (w//12, h//12), interpolation=cv2.INTER_LINEAR)
+            bg    = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
+        else:
+            bg = np.zeros((h, w, 3), dtype=np.uint8)
+
+        # Smooth mask
+        mask3 = cv2.GaussianBlur(mask, (21, 21), 0)
+        mask3 = np.stack([mask3]*3, axis=-1)
+        out   = (frame * mask3 + bg * (1 - mask3)).astype(np.uint8)
+        return out
 
     def cycle_filter(self, step=1):
         self.active_filter_idx = (self.active_filter_idx+step) % len(self.filter_keys)
@@ -1093,6 +1201,12 @@ class PortalProcessor:
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.detector.process(rgb)
         now     = time.time()
+
+        # ── Background replacement (sebelum deteksi tangan/wajah) ─────────────
+        if self.bg_idx != 0:
+            frame = self._apply_background(frame)
+            # Re-compute rgb setelah background diganti
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # ── Auto-rotate filter — interval random 1/2 detik ────────────────────
         # Hanya rotate jika setidaknya satu mode masih "auto"
@@ -1284,6 +1398,8 @@ class PortalProcessor:
     def close(self):
         self.face_proc.close()
         self.detector.close()
+        if self._seg_model is not None:
+            self._seg_model.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1567,6 +1683,16 @@ def _on_mouse(event, x, y, flags, param):
                 if fnx1 <= x <= fnx2 and fny1 <= y <= fny2:
                     p.face_filter_idx = (p.face_filter_idx + 1) % len(p.filter_keys)
                     return
+
+            # ── Control Panel: BACKGROUND prev/next ───────────────────────────
+            bgpx1, bgpy1, bgpx2, bgpy2 = p._cp_bg_prev_rect
+            bgnx1, bgny1, bgnx2, bgny2 = p._cp_bg_next_rect
+            if bgpx1 <= x <= bgpx2 and bgpy1 <= y <= bgpy2:
+                p.bg_idx = (p.bg_idx - 1) % len(p.bg_options)
+                return
+            if bgnx1 <= x <= bgnx2 and bgny1 <= y <= bgny2:
+                p.bg_idx = (p.bg_idx + 1) % len(p.bg_options)
+                return
 
             # Cek watermark dulu
             p.watermark_ui.handle_click(x, y)
