@@ -998,7 +998,7 @@ class PortalProcessor:
                 if SarangeoChecker.is_sarangeo(lm):
                     if not self._sarangeo_triggered:
                         self._sarangeo_triggered   = True
-                        self._sarangeo_quote       = random.choice(SARANGEO_QUOTES)
+                        self._sarangeo_quote       = random.choice(CROSSED_QUOTES)
                         self._sarangeo_quote_until = now + 3.0
                 else:
                     self._sarangeo_triggered = False
@@ -1006,7 +1006,7 @@ class PortalProcessor:
                 if CrossedFingersChecker.is_crossed(lm, self.cfg.frame_width, self.cfg.frame_height):
                     if not self._crossed_triggered:
                         self._crossed_triggered   = True
-                        self._crossed_quote       = random.choice(CROSSED_QUOTES)
+                        self._crossed_quote       = random.choice(SARANGEO_QUOTES)
                         self._crossed_quote_until = now + 3.0
                 else:
                     self._crossed_triggered = False
