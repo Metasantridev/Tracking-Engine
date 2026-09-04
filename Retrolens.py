@@ -854,6 +854,10 @@ class PortalProcessor:
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
 
+        # Tombol EXIT
+        self._exit_requested = False
+        self._exit_btn_rect  = (cfg.frame_width - 70, 4, cfg.frame_width - 4, 30)
+
     @property
     def current_filter(self): return self.filter_keys[self.active_filter_idx]
     @property
@@ -1071,46 +1075,46 @@ class IntroScreen:
 
         # ── Judul
         title = "TRACKING ENGINE"
-        (tw, _), _ = cv2.getTextSize(title, font, 2.2, 4)
-        cv2.putText(frame, title, ((fw - tw) // 2, fh // 2 - 200),
-                    font, 2.2, (0, 220, 255), 4, cv2.LINE_AA)
+        (tw, _), _ = cv2.getTextSize(title, font, 1.3, 2)
+        cv2.putText(frame, title, ((fw - tw) // 2, fh // 2 - 120),
+                    font, 1.3, (0, 220, 255), 2, cv2.LINE_AA)
 
         # ── Sub
         sub = "Siapa nama Anda?"
-        (sw, _), _ = cv2.getTextSize(sub, font, 1.1, 2)
-        cv2.putText(frame, sub, ((fw - sw) // 2, fh // 2 - 100),
-                    font, 1.1, (160, 160, 160), 2, cv2.LINE_AA)
+        (sw, _), _ = cv2.getTextSize(sub, font, 0.65, 1)
+        cv2.putText(frame, sub, ((fw - sw) // 2, fh // 2 - 68),
+                    font, 0.65, (160, 160, 160), 1, cv2.LINE_AA)
 
         # ── Input box
-        bx1, bx2 = fw // 2 - 380, fw // 2 + 380
-        by1, by2 = fh // 2 - 50,  fh // 2 + 24
+        bx1, bx2 = fw // 2 - 220, fw // 2 + 220
+        by1, by2 = fh // 2 - 36,  fh // 2 + 12
         cv2.rectangle(frame, (bx1, by1), (bx2, by2), (30, 30, 40), -1)
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 180, 255), 2)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 180, 255), 1)
 
         # Cursor blink
         if now - self._cursor_t > 0.5:
             self.cursor_vis = not self.cursor_vis
             self._cursor_t  = now
         display = self.name + ("|" if self.cursor_vis else " ")
-        cv2.putText(frame, display, (bx1 + 18, by2 - 12),
-                    font, 1.2, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, display, (bx1 + 10, by2 - 8),
+                    font, 0.75, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # ── Tombol OK (recalc supaya sesuai resolusi)
-        bw_ok, bh_ok = 280, 68
+        # ── Tombol OK
+        bw_ok, bh_ok = 160, 40
         ox1 = fw // 2 - bw_ok // 2
-        oy1 = fh // 2 + 60
+        oy1 = fh // 2 + 40
         ox2 = ox1 + bw_ok
         oy2 = oy1 + bh_ok
         self._ok_rect = (ox1, oy1, ox2, oy2)
         cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 140, 60), -1)
-        cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 220, 100), 2)
-        (ltw, _), _ = cv2.getTextSize("OK  /  Enter", font, 0.95, 2)
-        cv2.putText(frame, "OK  /  Enter", ((fw - ltw) // 2, oy2 - 18),
-                    font, 0.95, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.rectangle(frame, (ox1, oy1), (ox2, oy2), (0, 220, 100), 1)
+        (ltw, _), _ = cv2.getTextSize("OK  /  Enter", font, 0.55, 1)
+        cv2.putText(frame, "OK  /  Enter", ((fw - ltw) // 2, oy2 - 12),
+                    font, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
 
         # ── Footer
-        cv2.putText(frame, "Powered by Faisaldev", (20, fh - 20),
-                    font, 0.7, (50, 50, 60), 1, cv2.LINE_AA)
+        cv2.putText(frame, "Powered by Faisaldev", (10, fh - 12),
+                    font, 0.42, (50, 50, 60), 1, cv2.LINE_AA)
 
     def _draw_typing(self, frame: np.ndarray) -> None:
         fw, fh = self.fw, self.fh
@@ -1118,7 +1122,7 @@ class IntroScreen:
 
         font   = cv2.FONT_HERSHEY_SIMPLEX
         now    = time.time()
-        line_h = 72
+        line_h = 46
 
         # Advance typewriter
         if self._line_idx < len(self._lines):
@@ -1153,19 +1157,19 @@ class IntroScreen:
             # Pilih warna per baris
             if i == 0:
                 color = (0, 220, 255)        # cyan — "Halo, nama"
-                scale = 1.5; thick = 3
+                scale = 0.85; thick = 2
             elif i == len(self._lines) - 1:
                 color = (180, 180, 180)      # abu — "— Faisaldev"
-                scale = 0.9; thick = 2
+                scale = 0.48; thick = 1
             elif "Requested by" in line:
                 color = (0, 215, 255)        # gold — "Requested by Mas Rofiqz RJS"
-                scale = 1.1; thick = 3
+                scale = 0.62; thick = 2
             elif "In engineer" in line:
                 color = (0, 215, 255)        # kuning
-                scale = 1.1; thick = 2
+                scale = 0.62; thick = 1
             else:
                 color = (200, 200, 200)
-                scale = 1.05; thick = 2
+                scale = 0.58; thick = 1
 
             (tw, _), _ = cv2.getTextSize(rendered, font, scale, thick)
             tx = (fw - tw) // 2
@@ -1183,8 +1187,8 @@ class IntroScreen:
             cv2.putText(frame, disp, (tx, ty), font, scale, color, thick, cv2.LINE_AA)
 
         # Footer
-        cv2.putText(frame, "Powered by Faisaldev", (20, fh - 20),
-                    font, 0.7, (50, 50, 60), 1, cv2.LINE_AA)
+        cv2.putText(frame, "Powered by Faisaldev", (10, fh - 12),
+                    font, 0.42, (50, 50, 60), 1, cv2.LINE_AA)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
