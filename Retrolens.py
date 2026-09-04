@@ -417,58 +417,6 @@ class ThumbsUpChecker:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SARANGEO (ILY 🤟) GESTURE DETECTOR
-# ══════════════════════════════════════════════════════════════════════════════
-
-SARANGEO_QUOTES = [
-    "Saranghae~ 💕",
-    "I love you to the moon and back 🌙",
-    "Cinta itu buta, tapi hati yang melihat ❤️",
-    "Kamu bintang di langit malamku ✨",
-    "Stay in love, stay alive 💖",
-    "Love is the answer 🌸",
-    "Hatiku milikmu selamanya 💗",
-    "사랑해요~ (Saranghaeyo) 🥰",
-    "You make my heart go boom 💓",
-    "Dimana kamu, di situ hatiku 🫀",
-    "Love without limits 💝",
-    "Kamu adalah alasan senyumku 😊",
-    "세상에서 제일 사랑해 (Cinta terbesar di dunia) ❤️",
-    "My heart beats only for you 💞",
-    "Jangan pergi, aku butuh kamu 🥺",
-]
-
-
-class SarangeoChecker:
-    """
-    Deteksi gesture 🤟 ILY / Sarangeo:
-    - Ibu jari (4) naik
-    - Telunjuk (8) naik
-    - Kelingking (20) naik
-    - Jari tengah (12) & manis (16) menekuk
-    """
-
-    @staticmethod
-    def is_sarangeo(landmarks) -> bool:
-        lm = landmarks
-
-        # Ibu jari tegak
-        thumb_up = lm[4].y < lm[3].y - 0.03
-
-        # Telunjuk tegak
-        index_up = lm[8].y < lm[6].y - 0.03
-
-        # Kelingking tegak
-        pinky_up = lm[20].y < lm[18].y - 0.03
-
-        # Jari tengah & manis menekuk
-        middle_curled = lm[12].y > lm[10].y + 0.02
-        ring_curled   = lm[16].y > lm[14].y + 0.02
-
-        return thumb_up and index_up and pinky_up and middle_curled and ring_curled
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # FILTER BANK
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -787,6 +735,25 @@ class FPVHud:
         txt(f"     {ram_pct:.1f}%",   rx, 128, cls.C_DIM,   0.38, 1)
         txt(f"RES  {w}x{h}", rx, 148, cls.C_DIM, 0.40, 1)
 
+        # ══ CENTER crosshair
+        cx, cy = w//2, h//2
+        arm = 18; gap = 6
+        col_ch = cls.C_GREEN
+        cv2.line(frame, (cx-arm-gap, cy), (cx-gap, cy), col_ch, 1)
+        cv2.line(frame, (cx+gap, cy), (cx+arm+gap, cy), col_ch, 1)
+        cv2.line(frame, (cx, cy-arm-gap), (cx, cy-gap), col_ch, 1)
+        cv2.line(frame, (cx, cy+gap), (cx, cy+arm+gap), col_ch, 1)
+        cv2.circle(frame, (cx, cy), 3, col_ch, -1)
+        cv2.circle(frame, (cx, cy), arm+gap+4, col_ch, 1)
+        blen = 80
+        cv2.line(frame, (cx-blen, cy-1), (cx-gap-4, cy-1), cls.C_YELLOW, 2)
+        cv2.line(frame, (cx+gap+4, cy-1), (cx+blen, cy-1), cls.C_YELLOW, 2)
+        txt("0 deg", cx+blen+4, cy+4, cls.C_YELLOW, 0.35, 1)
+        brk = 20; bt = 2; bc = cls.C_GREEN
+        for (px,py,sx,sy) in [(0,0,1,1),(w,0,-1,1),(0,h,1,-1),(w,h,-1,-1)]:
+            cv2.line(frame,(px,py),(px+sx*brk,py),bc,bt)
+            cv2.line(frame,(px,py),(px,py+sy*brk),bc,bt)
+
         # ══ BOTTOM-LEFT fingertip coords
         if all_tips:
             hand_labels = ["L-HAND","R-HAND"]
@@ -804,6 +771,25 @@ class FPVHud:
                         10, base_y + hi*75 + 14 + fi*12,
                         col, 0.37, 1)
 
+        # ══ BOTTOM-CENTER legend (NOTE: tombol kamera digambar oleh PhotoCapture,
+        #    jadi legend kita geser sedikit ke atas agar tidak nabrak)
+        legend = [
+            ("PINCH",     "NEXT FILTER"),
+            ("V PEACE",   "BLUR FRAME"),
+            ("FIST x2",   "TOGGLE MODE"),
+            ("THUMB UP",  "POPUP NAME"),
+            ("N/P",       "FILTER STEP"),
+            ("F",         "FACE ON/OFF"),
+        ]
+        lw = 230; lh = len(legend)*14 + 10
+        lx = (w - lw) // 2 + 90   # geser kanan supaya tidak nabrak thumbnail+kamera
+        ly = h - lh - 75
+        panel(lx, ly, lx+lw, ly+lh)
+        cv2.rectangle(frame, (lx,ly), (lx+lw,ly+lh), cls.C_DIM, 1)
+        for i,(gesture,action) in enumerate(legend):
+            gy = ly + 12 + i*14
+            txt(f"{gesture:<12} {action}", lx+6, gy, cls.C_DIM, 0.35, 1)
+
         # ══ SCAN LINE
         for y_sl in range(0, h, 6):
             cv2.line(frame, (0, y_sl), (w, y_sl), (0,0,0), 1)
@@ -818,8 +804,8 @@ class FPVHud:
 @dataclass
 class PipelineConfig:
     cam_index: int = 0
-    frame_width: int = 1920
-    frame_height: int = 1080
+    frame_width: int = 960
+    frame_height: int = 540
     pinch_threshold_px: float = 45.0
     filter_cooldown_sec: float = 0.15
     mode_cooldown_sec: float = 1.2
@@ -868,15 +854,6 @@ class PortalProcessor:
         self._thumbsup_triggered = False
         self._thumbsup_frame_start = 0.0
 
-        # Flag sarangeo 🤟
-        self._sarangeo_triggered  = False
-        self._sarangeo_quote      = ""
-        self._sarangeo_quote_until = 0.0
-
-        # Tombol EXIT
-        self._exit_requested = False
-        self._exit_btn_rect  = (cfg.frame_width - 70, 4, cfg.frame_width - 4, 30)
-
     @property
     def current_filter(self): return self.filter_keys[self.active_filter_idx]
     @property
@@ -904,10 +881,7 @@ class PortalProcessor:
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool]:
         """Return processed_frame."""
         frame   = cv2.flip(frame, 1)
-        h_cam, w_cam = frame.shape[:2]
-        if w_cam != self.cfg.frame_width or h_cam != self.cfg.frame_height:
-            frame = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height),
-                               interpolation=cv2.INTER_LINEAR)
+        frame   = cv2.resize(frame, (self.cfg.frame_width, self.cfg.frame_height))
         rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.detector.process(rgb)
         now     = time.time()
@@ -937,14 +911,6 @@ class PortalProcessor:
 
                 if ThumbsUpChecker.is_thumbs_up(lm):
                     thumbsup = True
-
-                if SarangeoChecker.is_sarangeo(lm):
-                    if not self._sarangeo_triggered:
-                        self._sarangeo_triggered   = True
-                        self._sarangeo_quote       = random.choice(SARANGEO_QUOTES)
-                        self._sarangeo_quote_until = now + 3.0
-                else:
-                    self._sarangeo_triggered = False
 
             if fist_count == 2 and now - self.last_mode_toggle > self.cfg.mode_cooldown_sec:
                 self.is_3d_mode = not self.is_3d_mode; self.last_mode_toggle = now
@@ -993,35 +959,6 @@ class PortalProcessor:
         else:
             self._thumbsup_triggered = False
 
-        # ── 🤟 Sarangeo → tampilkan kata-kata random di tengah layar ──────────
-        if now < self._sarangeo_quote_until and self._sarangeo_quote:
-            quote = self._sarangeo_quote
-            font  = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 1.2; thick = 2
-            fw_f, fh_f = self.cfg.frame_width, self.cfg.frame_height
-            (tw, th), _ = cv2.getTextSize(quote, font, scale, thick)
-            tx = (fw_f - tw) // 2
-            ty = fh_f // 2
-
-            # Background semi-transparan
-            pad = 20
-            ovl = frame.copy()
-            cv2.rectangle(ovl,
-                          (tx - pad, ty - th - pad),
-                          (tx + tw + pad, ty + pad),
-                          (20, 10, 40), -1)
-            cv2.addWeighted(ovl, 0.65, frame, 0.35, 0, frame)
-
-            # Border pink
-            cv2.rectangle(frame,
-                          (tx - pad, ty - th - pad),
-                          (tx + tw + pad, ty + pad),
-                          (180, 80, 220), 2)
-
-            # Shadow + teks
-            cv2.putText(frame, quote, (tx+2, ty+2), font, scale, (0, 0, 0), thick+2, cv2.LINE_AA)
-            cv2.putText(frame, quote, (tx, ty), font, scale, (255, 180, 255), thick, cv2.LINE_AA)
-
         face_count = 0
         if self.face_mode:
             frame, face_count = self.face_proc.apply(frame, self.filters[self.current_filter])
@@ -1035,14 +972,6 @@ class PortalProcessor:
     def _draw_hud(self, frame, is_bowtie, face_count, all_tips=None, peace_active=False, fist_count=0):
         FPVHud.draw(frame, self, is_bowtie, face_count,
                     all_tips or [], peace_active, fist_count)
-        # Tombol EXIT — pojok kanan atas
-        ex1, ey1, ex2, ey2 = self._exit_btn_rect
-        ovl = frame.copy()
-        cv2.rectangle(ovl, (ex1, ey1), (ex2, ey2), (30, 20, 20), -1)
-        cv2.addWeighted(ovl, 0.8, frame, 0.2, 0, frame)
-        cv2.rectangle(frame, (ex1, ey1), (ex2, ey2), (60, 60, 200), 1)
-        cv2.putText(frame, "EXIT", (ex1 + 8, ey2 - 7),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (80, 80, 255), 1, cv2.LINE_AA)
 
     def close(self):
         self.face_proc.close()
