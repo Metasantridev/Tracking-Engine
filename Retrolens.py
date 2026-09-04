@@ -735,25 +735,6 @@ class FPVHud:
         txt(f"     {ram_pct:.1f}%",   rx, 128, cls.C_DIM,   0.38, 1)
         txt(f"RES  {w}x{h}", rx, 148, cls.C_DIM, 0.40, 1)
 
-        # ══ CENTER crosshair
-        cx, cy = w//2, h//2
-        arm = 18; gap = 6
-        col_ch = cls.C_GREEN
-        cv2.line(frame, (cx-arm-gap, cy), (cx-gap, cy), col_ch, 1)
-        cv2.line(frame, (cx+gap, cy), (cx+arm+gap, cy), col_ch, 1)
-        cv2.line(frame, (cx, cy-arm-gap), (cx, cy-gap), col_ch, 1)
-        cv2.line(frame, (cx, cy+gap), (cx, cy+arm+gap), col_ch, 1)
-        cv2.circle(frame, (cx, cy), 3, col_ch, -1)
-        cv2.circle(frame, (cx, cy), arm+gap+4, col_ch, 1)
-        blen = 80
-        cv2.line(frame, (cx-blen, cy-1), (cx-gap-4, cy-1), cls.C_YELLOW, 2)
-        cv2.line(frame, (cx+gap+4, cy-1), (cx+blen, cy-1), cls.C_YELLOW, 2)
-        txt("0 deg", cx+blen+4, cy+4, cls.C_YELLOW, 0.35, 1)
-        brk = 20; bt = 2; bc = cls.C_GREEN
-        for (px,py,sx,sy) in [(0,0,1,1),(w,0,-1,1),(0,h,1,-1),(w,h,-1,-1)]:
-            cv2.line(frame,(px,py),(px+sx*brk,py),bc,bt)
-            cv2.line(frame,(px,py),(px,py+sy*brk),bc,bt)
-
         # ══ BOTTOM-LEFT fingertip coords
         if all_tips:
             hand_labels = ["L-HAND","R-HAND"]
@@ -770,25 +751,6 @@ class FPVHud:
                     txt(f"  {fname}  X:{tx:4d}  Y:{ty:4d}",
                         10, base_y + hi*75 + 14 + fi*12,
                         col, 0.37, 1)
-
-        # ══ BOTTOM-CENTER legend (NOTE: tombol kamera digambar oleh PhotoCapture,
-        #    jadi legend kita geser sedikit ke atas agar tidak nabrak)
-        legend = [
-            ("PINCH",     "NEXT FILTER"),
-            ("V PEACE",   "BLUR FRAME"),
-            ("FIST x2",   "TOGGLE MODE"),
-            ("THUMB UP",  "POPUP NAME"),
-            ("N/P",       "FILTER STEP"),
-            ("F",         "FACE ON/OFF"),
-        ]
-        lw = 230; lh = len(legend)*14 + 10
-        lx = (w - lw) // 2 + 90   # geser kanan supaya tidak nabrak thumbnail+kamera
-        ly = h - lh - 75
-        panel(lx, ly, lx+lw, ly+lh)
-        cv2.rectangle(frame, (lx,ly), (lx+lw,ly+lh), cls.C_DIM, 1)
-        for i,(gesture,action) in enumerate(legend):
-            gy = ly + 12 + i*14
-            txt(f"{gesture:<12} {action}", lx+6, gy, cls.C_DIM, 0.35, 1)
 
         # ══ SCAN LINE
         for y_sl in range(0, h, 6):
